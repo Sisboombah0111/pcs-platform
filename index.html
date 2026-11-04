@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PCS Platform</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <div id="file-hint" hidden style="font: 15px/1.5 Arial, sans-serif; max-width: 600px; margin: 60px auto; padding: 0 16px; color: #16232b">
+      <h2>PCS Platform does not open by double-clicking this file</h2>
+      <p>On Windows, double-click <b>start-windows.cmd</b> in this folder. It installs what the app needs the first time, then opens the app at <b>http://localhost:5173</b> in your browser. Keep its black window open while you work.</p>
+      <p>Or use the team's GitHub Pages address, which needs no installation.</p>
+    </div>
+    <script>if (location.protocol === "file:") document.getElementById("file-hint").hidden = false;</script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

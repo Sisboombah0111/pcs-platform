@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="96" viewBox="0 0 120 96" fill="none" stroke="#1e1e1e" stroke-width="2" stroke-linejoin="round">
+  <rect x="2" y="2" width="116" height="80" rx="6" fill="#ffffff"/>
+  <rect x="14" y="14" width="22" height="56" fill="#c7d7de"/>
+  <line x1="12" y1="14" x2="38" y2="14"/><line x1="12" y1="70" x2="38" y2="70"/>
+  <circle cx="64" cy="30" r="12" fill="#ffffff"/><path d="M58 24 L72 30 L58 36 Z"/>
+  <rect x="84" y="16" width="22" height="22" fill="#ffffff"/><text x="95" y="31" font-family="Arial" font-size="10" text-anchor="middle" fill="#1e1e1e" stroke="none">UV</text>
+  <path d="M36 42 H52 M76 30 H84 M95 38 V58 H50 V70"/>
+  <line x1="10" y1="82" x2="10" y2="94"/><line x1="110" y1="82" x2="110" y2="94"/>
+</svg>

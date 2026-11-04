@@ -1,0 +1,53 @@
+{
+  "name": "pcs-platform",
+  "private": true,
+  "version": "0.1.0",
+  "description": "PFD · Mass Balance · BOM 연동 공정 설계 도구 (정적 웹앱, 백엔드 없음)",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "fonts": "node tools/copy-excalidraw-fonts.mjs",
+    "predev": "npm run fonts",
+    "dev": "vite",
+    "prebuild": "npm run fonts",
+    "build": "npm run typecheck && vite build",
+    "build:preview": "vite build --mode singlefile",
+    "preview": "vite preview",
+    "serve": "node tools/serve.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
+    "gridcraft": "node tools/fetch-gridcraft.mjs"
+  },
+  "dependencies": {
+    "@excalidraw/excalidraw": "0.18.1",
+    "exceljs": "4.4.0",
+    "jszip": "3.10.2",
+    "pptxgenjs": "4.0.1",
+    "react": "19.2.9",
+    "react-dom": "19.2.9"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.1",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.1.2",
+    "fake-indexeddb": "6.2.5",
+    "typescript": "6.0.3",
+    "vite": "8.3.4",
+    "vite-plugin-singlefile": "2.3.4",
+    "vitest": "5.0.5"
+  },
+  "overrides": {
+    "lodash-es": "4.18.1",
+    "katex": "0.19.1",
+    "@excalidraw/excalidraw": {
+      "nanoid": "3.3.20"
+    },
+    "@excalidraw/mermaid-to-excalidraw": {
+      "nanoid": "5.1.16"
+    },
+    "exceljs": {
+      "uuid": "11.1.1"
+    }
+  }
+}
