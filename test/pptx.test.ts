@@ -29,7 +29,8 @@ describe("PFD drawing → PowerPoint shapes", () => {
     const box = ops[0] as Extract<(typeof ops)[number], { kind: "shape" }>;
     expect(box.shape).toBe("roundRect");
     // Excalidraw adaptive corners: a quarter of the shorter side up to 128 px, then 32 px.
-    expect(box.radius).toBeCloseTo(27.5 / 55, 6);
+    // In inches (PptxGenJS reads rectRadius as inches): the editor's corner, a quarter of the shorter side here.
+    expect(box.radius! / box.h).toBeCloseTo(27.5 / 110, 4);
     expect(box.fill).toEqual({ color: "E7F1FB", transparency: 0 });
     const paths = ops.filter((o) => o.kind === "path") as Extract<(typeof ops)[number], { kind: "path" }>[];
     expect(paths.map((p) => [p.points.length, p.begin, p.end])).toEqual([[2, "none", "none"], [3, "none", "triangle"]]);
@@ -140,5 +141,77 @@ describe("pictures for PowerPoint (N5.1.1: SVG stream tables on a drawing made t
     const table = await zip.file(svgs[0])!.async("string");
     expect(table).toMatch(/^<svg xmlns="http:\/\/www.w3.org\/2000\/svg" width="\d+" height="\d+"/);
     expect(table).toContain("ST-10L-");
+  });
+});
+
+describe("symbols look the same in PowerPoint (N5.1.2)", () => {
+  it("a small rounded box keeps its corner: the radius goes in inches (PptxGenJS divides it by the shorter side)", async () => {
+    const { drawingOps } = await import("../src/pfd/pptx");
+    // The single-use bag body: 64 × 84 px, adaptive corners = 16 px. Alone it would fill the slide, so add a far
+    // point to keep the bag at its drawing size (≈ 0.6 in), where a 0–1 value had made it an oval.
+    const ops = drawingOps([el({ id: "bag", type: "rectangle", x: 0, y: 12, width: 64, height: 84, roundness: { type: 3 } }), el({ id: "far", type: "line", x: 1200, y: 600, width: 1, height: 1, points: [[0, 0], [1, 1]] })]);
+    const bag = ops.find((o) => o.kind === "shape") as Extract<(typeof ops)[number], { kind: "shape" }>;
+    expect(bag.shape).toBe("roundRect");
+    expect(bag.radius! / bag.w).toBeCloseTo(16 / 64, 3);
+    // What PptxGenJS writes: adj = radius / shorter side × 100000 → 25000, a quarter, as in the app (50000 = oval ends).
+    expect(Math.abs((bag.radius! / Math.min(bag.w, bag.h)) * 100000 - 25000)).toBeLessThan(20);
+  });
+
+  it("dashes are the editor's ([8, 8 + width] px, dots [1.5, 6 + width]) in line widths", async () => {
+    const { drawingOps } = await import("../src/pfd/pptx");
+    const [dash] = drawingOps([el({ id: "d", type: "line", strokeWidth: 1.5, strokeStyle: "dashed", points: [[0, 0], [100, 0]] })]) as Extract<ReturnType<typeof drawingOps>[number], { kind: "path" }>[];
+    expect(dash.line!.pattern!.dash).toBeCloseTo(8 / 1.5, 6);
+    expect(dash.line!.pattern!.gap).toBeCloseTo(9.5 / 1.5, 6);
+    const [dot] = drawingOps([el({ id: "o", type: "line", strokeWidth: 2, strokeStyle: "dotted", points: [[0, 0], [100, 0]] })]) as Extract<ReturnType<typeof drawingOps>[number], { kind: "path" }>[];
+    expect([dot.line!.pattern!.dash, dot.line!.pattern!.gap]).toEqual([0.75, 4]);
+  });
+
+  it("a dashed box becomes four sides (dashes start at every corner, as in the editor) over its fill", async () => {
+    const { drawingOps } = await import("../src/pfd/pptx");
+    const ops = drawingOps([el({ id: "j", type: "rectangle", width: 100, height: 60, strokeStyle: "dashed", backgroundColor: "#ffffff", fillStyle: "solid" })]);
+    expect(ops.map((o) => o.kind)).toEqual(["shape", "path"]);
+    const fill = ops[0] as Extract<(typeof ops)[number], { kind: "shape" }>;
+    const sides = ops[1] as Extract<(typeof ops)[number], { kind: "path" }>;
+    expect(fill.line).toBeUndefined();
+    expect(fill.fill?.color).toBe("FFFFFF");
+    expect(sides.points.filter((p) => p.move).length).toBe(4);
+    expect([sides.x, sides.y, sides.w, sides.h]).toEqual([fill.x, fill.y, fill.w, fill.h]);
+  });
+
+  it("hatching is drawn as lines at -41° in the fill colour, under the outline, with no solid fill", async () => {
+    const { drawingOps } = await import("../src/pfd/pptx");
+    const ops = drawingOps([el({ id: "bed", type: "rectangle", width: 40, height: 108, strokeWidth: 1.5, backgroundColor: "#c7d7de", fillStyle: "hachure" })]);
+    expect(ops.map((o) => o.kind)).toEqual(["path", "shape"]);
+    const hatch = ops[0] as Extract<(typeof ops)[number], { kind: "path" }>;
+    const box = ops[1] as Extract<(typeof ops)[number], { kind: "shape" }>;
+    expect(box.fill).toBeUndefined();
+    expect(hatch.line!.color).toBe("C7D7DE");
+    const moves = hatch.points.filter((p) => p.move).length;
+    expect(moves).toBeGreaterThan(15);
+    // Every line rises to the right at 41°.
+    const [a, b] = [hatch.points[0], hatch.points[1]];
+    expect(Math.round((Math.atan2(a.y - b.y, b.x - a.x) * 180) / Math.PI)).toBe(41);
+  });
+
+  it("hatch lines stay inside the shape", async () => {
+    const { hatchLines, outlineOf } = await import("../src/pfd/pptx");
+    const square = hatchLines(outlineOf("rectangle", 10, 10), 0, 2);
+    expect(square.length).toBe(5);
+    for (const [p, q] of square) expect([p[0], q[0]]).toEqual([0, 10]);
+    for (const [p, q] of hatchLines(outlineOf("ellipse", 40, 20), -41, 3)) {
+      for (const [x, y] of [p, q]) expect(((x - 20) / 20) ** 2 + ((y - 10) / 10) ** 2).toBeLessThan(1.01);
+    }
+  });
+
+  it("the slide XML gets the editor's custom dash and round ends and corners", async () => {
+    const { withEditorDashes } = await import("../src/pfd/pptx");
+    const sp = (name: string, dash = "") => `<p:sp><p:nvSpPr><p:cNvPr id="3" name="${name}"></p:cNvPr></p:nvSpPr><p:spPr><a:ln w="13208"><a:solidFill><a:srgbClr val="1E1E1E"/></a:solidFill>${dash}<a:headEnd type="none"/></a:ln></p:spPr></p:sp>`;
+    const out = withEditorDashes(sp("PCSDASH-533333-633333", '<a:prstDash val="dash"/>') + sp("Shape 4") + "<p:sp><p:txBody><a:p/></p:txBody></p:sp>");
+    expect(out).toContain('name="Dashed line"');
+    expect(out).toContain('<a:custDash><a:ds d="533333" sp="633333"/></a:custDash><a:round/><a:headEnd');
+    expect(out).not.toContain("prstDash");
+    expect(out.match(/<a:ln w="13208" cap="rnd">/g)?.length).toBe(2);
+    expect(out).toContain('</a:solidFill><a:round/><a:headEnd type="none"/>');
+    expect(out).toContain("<p:sp><p:txBody><a:p/></p:txBody></p:sp>");
   });
 });

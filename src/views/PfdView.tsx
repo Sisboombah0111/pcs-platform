@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
-  CaptureUpdateAction, Excalidraw, MainMenu, WelcomeScreen, convertToExcalidrawElements, getCommonBounds, getLibraryItemsHash, getSceneVersion,
+  CaptureUpdateAction, Excalidraw, MainMenu, WelcomeScreen, convertToExcalidrawElements, exportToBlob, getCommonBounds, getLibraryItemsHash, getSceneVersion,
 } from "@excalidraw/excalidraw";
 import type {
   AppState, BinaryFileData, BinaryFiles, DataURL, ExcalidrawImperativeAPI, ExcalidrawInitialDataState, LibraryItems,
@@ -22,7 +22,8 @@ import { PptxExportDialog } from "./PptxExport";
 import { BOX_GAP, BOX_W, boxJson, frameJson } from "../pfd/shapes";
 import { copyDrawing, copyTag } from "../pfd/duplicate";
 import { DuplicateUnitDialog, ownEquipment, type DuplicateOptions } from "./DuplicateUnit";
-import { symbolById } from "../pfd/symbols";
+import { SYMBOLS, symbolById } from "../pfd/symbols";
+import { buildPfdDeck } from "../pfd/pptx";
 import {
   MAP, applyScope, boxText, frameLabel, pcsOf, syncProject, type BoardElement, type PcsData, type StreamInfo,
 } from "../pfd/sync";
@@ -852,6 +853,40 @@ export function PfdView(props: {
                   all: () => [MAP, ...Object.keys(local.current.pfd.sheets)].flatMap((k) =>
                     (k === scopeRef.current && apiRef.current ? apiRef.current.getSceneElements() : sheetOf(local.current.pfd, k).elements) as unknown[]),
                   convert: convertToExcalidrawElements,
+                  /** The built-in symbols as inserted (no name label), laid out 4 × 3 per sheet at their drawing size inside a
+                   *  light frame, and ways to picture them as the editor does and as the PowerPoint export does:
+                   *  tools/compare-symbols-pptx.mjs compares the two. */
+                  symbolSheets: (perRow = 4, rows = 3, cell = 200) => {
+                    const sheets: { ids: string[]; names: string[]; elements: ExcalidrawElement[] }[] = [];
+                    SYMBOLS.forEach((d, i) => {
+                      const k = Math.floor(i / (perRow * rows)), at = i % (perRow * rows);
+                      if (!sheets[k]) {
+                        const frame = convertToExcalidrawElements([{ type: "rectangle", x: 0, y: 0, width: perRow * cell, height: rows * cell, strokeColor: "#d0d0d0", strokeWidth: 1, roughness: 0, backgroundColor: "transparent" }], { regenerateIds: true });
+                        sheets[k] = { ids: [], names: [], elements: [...frame] };
+                      }
+                      const els = symbolElements({ ...d, label: "" }, 0, 0, null);
+                      const [x1, y1, x2, y2] = getCommonBounds(els);
+                      const cx = (at % perRow) * cell + cell / 2, cy = Math.floor(at / perRow) * cell + cell / 2;
+                      sheets[k].ids.push(d.id); sheets[k].names.push(d.name);
+                      sheets[k].elements.push(...els.map((e) => ({ ...e, x: e.x + cx - (x1 + x2) / 2, y: e.y + cy - (y1 + y2) / 2 }) as ExcalidrawElement));
+                    });
+                    return sheets;
+                  },
+                  png: async (elements: readonly ExcalidrawElement[], scale = 2) => {
+                    const blob = await exportToBlob({
+                      elements, files: null, exportPadding: 0, mimeType: "image/png",
+                      appState: { exportBackground: true, viewBackgroundColor: "#ffffff" },
+                      getDimensions: (w: number, h: number) => ({ width: w * scale, height: h * scale, scale }),
+                    });
+                    return await new Promise<string>((res) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.readAsDataURL(blob); });
+                  },
+                  /** A PowerPoint deck (base64), one slide per sheet of elements, made by the real exporter. */
+                  deck: async (sheets: { elements: readonly ExcalidrawElement[] }[]) => {
+                    const list = sheets.map((sh, i) => ({ id: `sheet_${i + 1}`, code: `S${i + 1}`, name: `Symbols ${i + 1}`, elements: sh.elements }));
+                    const p = { ...propsRef.current.project, uos: list.map((u) => ({ id: u.id, code: u.code, name: u.name })) } as unknown as Project;
+                    const blob = await buildPfdDeck(p, { slides: list.map((u) => u.id), mode: "shapes", streamTables: false, sheet: (k) => ({ elements: list.find((u) => u.id === k)!.elements, files: {} }) });
+                    return await new Promise<string>((res) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",").pop() ?? ""); r.readAsDataURL(blob as Blob); });
+                  },
                 };
               }
             }}

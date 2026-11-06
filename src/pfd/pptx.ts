@@ -52,10 +52,15 @@ interface El {
 }
 
 export type Arrowhead = "none" | "arrow" | "triangle" | "oval" | "diamond" | "stealth";
-export interface LineStyle { color: string; width: number; dash?: "dash" | "sysDot"; transparency?: number }
+/**
+ * A line as PowerPoint draws it. `pattern`: the editor's own dash or dot lengths (in line widths), written as a
+ * custom dash with round ends after PptxGenJS (which only knows preset dashes, shorter than the editor's); `dash`
+ * is the preset that stands in for it where the custom one is not read.
+ */
+export interface LineStyle { color: string; width: number; dash?: "dash" | "sysDot"; pattern?: { dash: number; gap: number }; transparency?: number }
 export type Op =
   | { kind: "shape"; shape: "rect" | "roundRect" | "ellipse" | "diamond"; x: number; y: number; w: number; h: number; rotate: number; line?: LineStyle; fill?: { color: string; transparency: number }; radius?: number }
-  | { kind: "path"; x: number; y: number; w: number; h: number; rotate: number; points: { x: number; y: number }[]; closed: boolean; line?: LineStyle; fill?: { color: string; transparency: number }; begin: Arrowhead; end: Arrowhead }
+  | { kind: "path"; x: number; y: number; w: number; h: number; rotate: number; points: { x: number; y: number; move?: boolean }[]; closed: boolean; line?: LineStyle; fill?: { color: string; transparency: number }; begin: Arrowhead; end: Arrowhead }
   | { kind: "text"; x: number; y: number; w: number; h: number; rotate: number; text: string; fontSize: number; fontFace: string; color: string; align: "left" | "center" | "right"; valign: "top" | "middle" | "bottom"; lineSpacing: number; fill?: string }
   | { kind: "image"; x: number; y: number; w: number; h: number; rotate: number; data: string; px: { w: number; h: number } };
 
@@ -115,19 +120,39 @@ export function drawingOps(elements: readonly unknown[], files: Record<string, u
   const lineOf = (e: El): LineStyle | undefined => {
     const color = hex(e.strokeColor);
     if (!color) return undefined;
-    const l: LineStyle = { color, width: Math.max(0.25, Number(pt(e.strokeWidth ?? 1).toFixed(2))) };
-    if (e.strokeStyle === "dashed") l.dash = "dash";
-    if (e.strokeStyle === "dotted") l.dash = "sysDot";
+    const sw = Math.max(0.1, e.strokeWidth ?? 1);
+    const l: LineStyle = { color, width: Math.max(0.25, Number(pt(sw).toFixed(2))) };
+    // The editor's dashes are [8, 8 + width] px and dots [1.5, 6 + width] px, with round ends (Excalidraw 0.18).
+    if (e.strokeStyle === "dashed") { l.dash = "dash"; l.pattern = { dash: 8 / sw, gap: (8 + sw) / sw }; }
+    if (e.strokeStyle === "dotted") { l.dash = "sysDot"; l.pattern = { dash: 1.5 / sw, gap: (6 + sw) / sw }; }
     if (e.opacity != null && e.opacity < 100) l.transparency = 100 - e.opacity;
     return l;
   };
+  const hatched = (e: El) => !!hex(e.backgroundColor) && !!e.fillStyle && e.fillStyle !== "solid";
+  /** A solid fill (a hatched one is drawn as lines by `hatchOp`). */
   const fillOf = (e: El) => {
     const color = hex(e.backgroundColor);
-    if (!color) return undefined;
-    // Hatch patterns have no PowerPoint equivalent: a lighter solid fill stands for them.
-    const base = e.fillStyle && e.fillStyle !== "solid" ? 55 : 0;
+    if (!color || hatched(e)) return undefined;
     const op = e.opacity != null && e.opacity < 100 ? 100 - e.opacity : 0;
-    return { color, transparency: Math.min(100, base + op) };
+    return { color, transparency: op };
+  };
+  /**
+   * The editor's hatching as one path of lines, in the shape's own box (so it turns with it): lines at -41°,
+   * 4 × the stroke width apart and half as thick, in the fill colour; cross-hatch adds the other direction.
+   */
+  const hatchOp = (e: El, outline: [number, number][]): Op | undefined => {
+    const color = hex(e.backgroundColor);
+    if (!color || !hatched(e)) return undefined;
+    const sw = Math.max(0.1, e.strokeWidth ?? 1);
+    const angles = e.fillStyle === "cross-hatch" ? [-41, 49] : [-41];
+    const segs = angles.flatMap((a) => hatchLines(outline, a, sw * 4));
+    if (!segs.length) return undefined;
+    const points = segs.flatMap(([p, q]) => [{ x: Number((p[0] * s).toFixed(4)), y: Number((p[1] * s).toFixed(4)), move: true }, { x: Number((q[0] * s).toFixed(4)), y: Number((q[1] * s).toFixed(4)) }]);
+    const transparency = e.opacity != null && e.opacity < 100 ? 100 - e.opacity : undefined;
+    return {
+      kind: "path", x: X(e.x), y: Y(e.y), w: Math.max(e.width * s, 0.01), h: Math.max(e.height * s, 0.01), rotate: deg(e), points, closed: false,
+      line: { color, width: Math.max(0.25, Number(pt(sw / 2).toFixed(2))), ...(transparency ? { transparency } : {}) }, begin: "none", end: "none",
+    };
   };
   const deg = (e: El) => Math.round(((e.angle ?? 0) * 180) / Math.PI);
 
@@ -138,14 +163,32 @@ export function drawingOps(elements: readonly unknown[], files: Record<string, u
       case "diamond": {
         const w = Math.max(e.width * s, 0.01), h = Math.max(e.height * s, 0.01);
         const op: Op = { kind: "shape", shape: e.type === "ellipse" ? "ellipse" : e.type === "diamond" ? "diamond" : "rect", x: X(e.x), y: Y(e.y), w, h, rotate: deg(e) };
+        let r = 0;
         if (e.type === "rectangle" && e.roundness) {
+          // The editor's corner: a quarter of the shorter side, at most 32 px (adaptive) — Excalidraw getCornerRadius.
           const m = Math.min(e.width, e.height);
-          const r = e.roundness.type === 3 ? Math.min(e.roundness.value ?? 32, m * 0.25) : m * 0.25;
+          r = e.roundness.type === 3 ? Math.min(e.roundness.value ?? 32, m * 0.25) : m * 0.25;
           op.shape = "roundRect";
-          op.radius = Math.max(0, Math.min(1, r / (m / 2)));
+          // In inches: PptxGenJS writes rectRadius / shorter side (its docs say 0–1, its code reads inches). A
+          // 0–1 value made small rounded boxes (a single-use bag) come out as ovals.
+          op.radius = Number((Math.max(0, Math.min(r, m / 2)) * s).toFixed(4));
         }
-        const line = lineOf(e); if (line) op.line = line;
+        const line = lineOf(e);
         const fill = fillOf(e); if (fill) op.fill = fill;
+        const hatch = hatchOp(e, outlineOf(e.type, e.width, e.height, r));
+        if (hatch) ops.push(hatch);
+        // A dashed outline starts its dashes where the editor's do: on a box or diamond at every corner (rough.js
+        // draws the sides one by one), on an ellipse at its rightmost point, going clockwise. So it becomes a path
+        // over the filled (outline-less) shape. A rounded box keeps its own outline.
+        if (line?.pattern && !(e.type === "rectangle" && e.roundness)) {
+          if (op.fill) ops.push(op);
+          const o = outlineOf(e.type, e.width, e.height, 0);
+          const at = (p: [number, number], move?: boolean) => ({ x: Number((p[0] * s).toFixed(4)), y: Number((p[1] * s).toFixed(4)), ...(move ? { move: true } : {}) });
+          const points = e.type === "ellipse" ? [...o, o[0]].map((p, i) => at(p, i === 0)) : o.flatMap((p, i) => [at(p, true), at(o[(i + 1) % o.length])]);
+          ops.push({ kind: "path", x: op.x, y: op.y, w: op.w, h: op.h, rotate: op.rotate, points, closed: false, line, begin: "none", end: "none" });
+          break;
+        }
+        if (line) op.line = line;
         ops.push(op);
         break;
       }
@@ -178,6 +221,10 @@ export function drawingOps(elements: readonly unknown[], files: Record<string, u
           };
           const line = lineOf(e); if (line) op.line = line;
           if (closed) { const fill = fillOf(e); if (fill) op.fill = fill; }
+          if (closed && i === 0 && pieces.length === 1) {
+            const hatch = hatchOp({ ...e, x: minX, y: minY, width: maxX - minX, height: maxY - minY, angle: 0 }, piece.map(([px, py]) => [px - minX, py - minY] as [number, number]));
+            if (hatch) ops.push(hatch);
+          }
           ops.push(op);
         });
         break;
@@ -286,6 +333,68 @@ export interface DeckOptions {
   output?: "blob" | "nodebuffer";
 }
 
+// ---- dashes, hatching and outlines as the editor draws them -------------------------------------------------------------
+
+const DASH_MARK = "PCSDASH";
+/** A shape with the editor's dash pattern is named so that `withEditorDashes` finds it in the slide XML. */
+const dashName = (line?: LineStyle) =>
+  line?.pattern ? { objectName: `${DASH_MARK}-${Math.round(line.pattern.dash * 100000)}-${Math.round(line.pattern.gap * 100000)}` } : {};
+
+/**
+ * Slide XML with lines as the editor draws them: round ends and round corners on every line, and on each marked
+ * shape the editor's dash instead of the preset one (a custom dash, lengths in line widths, 100000 = 1); that
+ * shape gets a plain name back.
+ */
+export function withEditorDashes(xml: string): string {
+  return xml.replace(/<p:sp>[\s\S]*?<\/p:sp>/g, (sp) => {
+    const m = new RegExp(`name="${DASH_MARK}-(\\d+)-(\\d+)"`).exec(sp);
+    let out = sp;
+    if (m) {
+      out = out.replace(m[0], 'name="Dashed line"').replace(/<a:prstDash val="[^"]*"\/>/, `<a:custDash><a:ds d="${m[1]}" sp="${m[2]}"/></a:custDash>`);
+    }
+    // Inside <a:ln>: fill, dash, then the corner style (schema order), then the arrowheads.
+    return out.replace(/<a:ln w="(\d+)">((?:<a:solidFill>[\s\S]*?<\/a:solidFill>|<a:noFill\/>)?)((?:<a:prstDash val="[^"]*"\/>|<a:custDash>[\s\S]*?<\/a:custDash>)?)/,
+      '<a:ln w="$1" cap="rnd">$2$3<a:round/>');
+  });
+}
+
+/** The outline of a rectangle (corner radius r), ellipse or diamond of w × h, as a polygon in its own box. */
+export function outlineOf(type: string, w: number, h: number, r = 0): [number, number][] {
+  if (type === "ellipse") return Array.from({ length: 64 }, (_, i) => { const a = (i / 64) * Math.PI * 2; return [w / 2 + (w / 2) * Math.cos(a), h / 2 + (h / 2) * Math.sin(a)] as [number, number]; });
+  if (type === "diamond") return [[w / 2, 0], [w, h / 2], [w / 2, h], [0, h / 2]];
+  if (r <= 0) return [[0, 0], [w, 0], [w, h], [0, h]];
+  const pts: [number, number][] = [];
+  const corner = (cx: number, cy: number, from: number) => { for (let i = 0; i <= 8; i++) { const a = ((from + (i / 8) * 90) * Math.PI) / 180; pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); } };
+  corner(w - r, r, -90); corner(w - r, h - r, 0); corner(r, h - r, 90); corner(r, r, 180);
+  return pts;
+}
+
+/** Hatch lines inside a polygon: parallel lines at `angle` degrees (y down), `gap` apart, cut to the polygon. */
+export function hatchLines(poly: [number, number][], angle: number, gap: number): [[number, number], [number, number]][] {
+  if (poly.length < 3 || gap <= 0) return [];
+  const a = (angle * Math.PI) / 180;
+  const d: [number, number] = [Math.cos(a), Math.sin(a)];
+  const n: [number, number] = [-d[1], d[0]];
+  const dot = (p: [number, number], v: [number, number]) => p[0] * v[0] + p[1] * v[1];
+  const ts = poly.map((p) => dot(p, n));
+  const lo = Math.min(...ts), hi = Math.max(...ts);
+  const out: [[number, number], [number, number]][] = [];
+  for (let t = lo + gap / 2; t < hi; t += gap) {
+    const hits: [number, number][] = [];
+    for (let i = 0; i < poly.length; i++) {
+      const p = poly[i], q = poly[(i + 1) % poly.length];
+      const vp = dot(p, n) - t, vq = dot(q, n) - t;
+      if ((vp < 0 && vq >= 0) || (vp >= 0 && vq < 0)) {
+        const k = vp / (vp - vq);
+        hits.push([p[0] + (q[0] - p[0]) * k, p[1] + (q[1] - p[1]) * k]);
+      }
+    }
+    hits.sort((u, v) => dot(u, d) - dot(v, d));
+    for (let i = 0; i + 1 < hits.length; i += 2) out.push([hits[i], hits[i + 1]]);
+  }
+  return out;
+}
+
 // ---- pictures for PptxGenJS ------------------------------------------------------------------------------------------
 
 const toBase64 = (bytes: Uint8Array) => {
@@ -385,7 +494,7 @@ export async function buildPfdDeck(p: Project, opts: DeckOptions): Promise<Blob 
         if (op.kind === "shape") {
           const shape = { rect: S.rect, roundRect: S.roundRect, ellipse: S.ellipse, diamond: S.diamond }[op.shape];
           slide.addShape(shape, {
-            x: op.x, y: op.y, w: op.w, h: op.h, rotate: op.rotate || undefined,
+            x: op.x, y: op.y, w: op.w, h: op.h, rotate: op.rotate || undefined, ...dashName(op.line),
             line: op.line ? { color: op.line.color, width: op.line.width, dashType: op.line.dash, transparency: op.line.transparency } : { type: "none" },
             fill: op.fill ? { color: op.fill.color, transparency: op.fill.transparency } : { type: "none" },
             ...(op.radius != null ? { rectRadius: op.radius } : {}),
@@ -393,15 +502,17 @@ export async function buildPfdDeck(p: Project, opts: DeckOptions): Promise<Blob 
         } else if (op.kind === "path") {
           // Free-form path: in PptxGenJS at run time, not in its type list.
           slide.addShape("custGeom" as unknown as typeof S.rect, {
-            x: op.x, y: op.y, w: op.w, h: op.h, rotate: op.rotate || undefined,
-            points: [...op.points.map((pt, i) => (i === 0 ? { ...pt, moveTo: true } : pt)), ...(op.closed ? [{ close: true as const }] : [])],
+            x: op.x, y: op.y, w: op.w, h: op.h, rotate: op.rotate || undefined, ...dashName(op.line),
+            points: [...op.points.map((pt, i) => (i === 0 || pt.move ? { x: pt.x, y: pt.y, moveTo: true } : { x: pt.x, y: pt.y })), ...(op.closed ? [{ close: true as const }] : [])],
             line: op.line ? { color: op.line.color, width: op.line.width, dashType: op.line.dash, transparency: op.line.transparency, beginArrowType: op.begin, endArrowType: op.end } : { type: "none" },
             fill: op.fill ? { color: op.fill.color, transparency: op.fill.transparency } : { type: "none" },
           });
         } else if (op.kind === "text") {
           slide.addText(op.text, {
             x: op.x, y: op.y, w: op.w, h: op.h, rotate: op.rotate || undefined, fontFace: op.fontFace, fontSize: op.fontSize, color: op.color,
-            align: op.align, valign: op.valign, margin: 0, lineSpacingMultiple: op.lineSpacing, wrap: false, fit: "none",
+            // Exact line spacing (font size × the editor's line height) puts every line where the editor has it;
+            // a multiple adds its extra space above the first line and moved all text down.
+            align: op.align, valign: op.valign, margin: 0, lineSpacing: Number((op.fontSize * op.lineSpacing).toFixed(2)), wrap: false, fit: "none",
             ...(op.fill ? { fill: { color: op.fill } } : {}),
           });
         } else {
@@ -435,6 +546,11 @@ export async function buildPfdDeck(p: Project, opts: DeckOptions): Promise<Blob 
   const raw = (await pptx.write({ outputType: "arraybuffer" })) as ArrayBuffer;
   const { default: JSZip } = await import("jszip");
   const zip = await JSZip.loadAsync(raw);
+  for (const name of Object.keys(zip.files).filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))) {
+    const xml = await zip.file(name)!.async("string");
+    const fixed = withEditorDashes(xml);
+    if (fixed !== xml) zip.file(name, fixed);
+  }
   if (opts.output === "nodebuffer") return zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
   return zip.generateAsync({ type: "blob", compression: "DEFLATE", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation" });
 }
