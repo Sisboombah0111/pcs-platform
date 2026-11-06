@@ -6,3 +6,5 @@ public/excalidraw/
 .DS_Store
 public/gridcraft/
 public/examples/
+__pycache__/
+*.pyc
