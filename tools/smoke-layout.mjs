@@ -104,6 +104,7 @@ check("pictures: the 2 chosen slides, each one picture", d.slides.length === 2 &
 await tab("BOM");
 const matTh = (uo) => page.locator(`section[aria-label='BOM ${uo}'] thead th`).nth(1);
 const before = await matTh("PROA").evaluate((e) => Math.round(e.getBoundingClientRect().width));
+const codeBefore = await page.locator("section[aria-label='BOM PROA'] thead th").first().evaluate((e) => Math.round(e.getBoundingClientRect().width));
 await matTh("PROA").hover();
 await dragBy(matTh("PROA").locator(".col-resizer"), 160);
 const after = await matTh("PROA").evaluate((e) => Math.round(e.getBoundingClientRect().width));
@@ -111,7 +112,7 @@ const other = await matTh("UFDF").evaluate((e) => Math.round(e.getBoundingClient
 check("BOM: dragging the Material header edge widens the column", after >= before + 150, `${before} → ${after}`);
 check("…in every unit operation's table at once", Math.abs(other - after) <= 1, `PROA ${after}, UFDF ${other}`);
 const codeW = await page.locator("section[aria-label='BOM PROA'] thead th").first().evaluate((e) => Math.round(e.getBoundingClientRect().width));
-check("the other columns keep their width", Math.abs(codeW - 124) <= 2, String(codeW));
+check("the other columns keep their width", Math.abs(codeW - codeBefore) <= 2, `Code ${codeBefore} → ${codeW}`);
 if (out) await page.screenshot({ path: `${out}-bom-columns.png` });
 await page.reload();
 await page.waitForSelector(".excalidraw");

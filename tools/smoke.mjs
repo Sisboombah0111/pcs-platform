@@ -31,6 +31,10 @@ await page.goto(base);
 await page.waitForSelector(".excalidraw", { timeout: 20000 });
 check("PFD board opens", await page.locator(".excalidraw canvas").count() > 0);
 
+// An empty project shows the start card (N5.1) over the middle of the process map: close it to draw there.
+const startClose = page.getByRole("button", { name: "Hide the start card" });
+if (await startClose.isVisible().catch(() => false)) await startClose.click();
+
 // Draw a rectangle with the keyboard shortcut and a drag.
 const canvas = page.locator("canvas.interactive");
 await canvas.click({ position: { x: 700, y: 400 } });

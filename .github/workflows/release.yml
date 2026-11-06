@@ -1,0 +1,37 @@
+name: Release (PC version zip)
+
+# A version tag (v5.1.0 …) publishes a GitHub release with the PC version: the built app and start-windows.cmd
+# in one zip, for computers where the site cannot be opened. The tag must match package.json's version.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - name: The tag matches package.json
+        run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx vitest run
+      - name: GridCraft (official web build)
+        run: node tools/fetch-gridcraft.mjs
+      - run: npm run build
+      - name: The zip
+        run: bash tools/make-pc-zip.sh "pcs-platform-$GITHUB_REF_NAME.zip"
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          label="N$(node -p "const [a,b,c]=require('./package.json').version.split('.');a+'.'+b+(c!=='0'?'.'+c:'')")"
+          gh release create "$GITHUB_REF_NAME" "pcs-platform-$GITHUB_REF_NAME.zip" \
+            --title "PCS Platform $label (PC version)" --notes-file .github/release-notes.md

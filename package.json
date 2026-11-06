@@ -1,12 +1,12 @@
 {
   "name": "pcs-platform",
   "private": true,
-  "version": "0.1.0",
+  "version": "5.1.0",
   "description": "PFD · Mass Balance · BOM 연동 공정 설계 도구 (정적 웹앱, 백엔드 없음)",
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "fonts": "node tools/copy-excalidraw-fonts.mjs",
+    "fonts": "node tools/copy-excalidraw-fonts.mjs && node tools/copy-examples.mjs",
     "predev": "npm run fonts",
     "dev": "vite",
     "prebuild": "npm run fonts",

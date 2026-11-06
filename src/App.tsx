@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ProjectFileError, createProject, parseProject, projectFileName, serializeProject, touch } from "./model/project";
+import { ProjectFileError, createProject, parseProject, projectFileName, serializeProject, touch, withoutViewPositions } from "./model/project";
+import { exampleUrl, type Example } from "./examples";
+import { StartCard } from "./views/StartCard";
 import { SAMPLE_COUNT, sampleMaterials } from "./model/sampleData";
 import type { Material, PfdBoard, Project } from "./model/types";
 import { debouncer, holdConnection, loadCurrent, saveCurrent, saveCurrentNow } from "./storage/autosave";
@@ -41,6 +43,9 @@ export default function App() {
   const pfdControl = useRef<PfdControl | null>(null);
   const [materialFocus, setMaterialFocus] = useState<{ code: string; open?: "recipe" | "backups"; n: number } | null>(null);
   const [opsFocus, setOpsFocus] = useState<OpsFocus | null>(null);
+  // The start card of an empty project, hidden for that project in this browser once its × is clicked.
+  const [startHidden, setStartHidden] = useState<string | null>(() => { try { return localStorage.getItem("pcs.start.hidden"); } catch { return null; } });
+  const hideStart = (id: string) => { setStartHidden(id); try { localStorage.setItem("pcs.start.hidden", id); } catch { /* storage off: hidden until reload */ } };
   const [guideOpen, setGuideOpenState] = useState(guideOpenAtStart);
   const setGuideOpen = (open: boolean) => { setGuideOpenState(open); rememberGuideOpen(open); };
   const { confirm, element: confirmEl } = useConfirm();
@@ -237,14 +242,31 @@ export default function App() {
     if (!(await guardUnsaved("open"))) return;
     const file = await pickFile(".json,application/json");
     if (!file) return;
+    openText(await file.text(), file.name);
+  };
+
+  /** A project file's text, opened like Open does (from a file, or an example that comes with the app). */
+  const openText = (text: string, name: string) => {
     try {
-      const { project: p, notes } = parseProject(await file.text());
-      setProject(p);
+      const { project: p, notes } = parseProject(text);
+      // The zoom and scroll saved in the file were for the screen it was saved on: each drawing fits this one.
+      setProject(withoutViewPositions(p));
       setFileSavedVersion(p.meta.updatedAt);
       setTab("pfd");
-      toast(notes.length ? `Opened ${file.name} · ${notes.length} note(s): ${notes[0]}` : `Opened ${file.name}`);
+      toast(notes.length ? `Opened ${name} · ${notes.length} note(s): ${notes[0]}` : `Opened ${name}`);
     } catch (e) {
       toast(e instanceof ProjectFileError ? e.message : `Could not open the file: ${(e as Error).message}`);
+    }
+  };
+
+  const openExample = async (ex: Example) => {
+    if (!(await guardUnsaved("open"))) return;
+    try {
+      const res = await fetch(exampleUrl(ex.file));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      openText(await res.text(), ex.file);
+    } catch (e) {
+      toast(`Could not load the example (${(e as Error).message}). It is also in the examples folder on GitHub.`);
     }
   };
 
@@ -317,18 +339,21 @@ export default function App() {
           title="Step-by-step guide to linking the PFD, the Mass Balance and the BOM (English / 한국어)">
           <span className="guide-q" aria-hidden>?</span> Guide
         </button>
-        <div className="spacer" />
-        <div className="status" title={"title" in status ? status.title : status.text}>
-          <span className={`dot ${status.dot}`} /><span className="label">{status.text}</span>
-        </div>
-        <LinkChip findings={findings} onOpen={() => setLinkOpen(true)} />
-        <div className="actions">
-          <button className="btn" onClick={() => setNewDialog(true)}>New</button>
-          <button className="btn" onClick={openFile}>Open</button>
-          <button className={`btn primary${unsavedToFile ? " unsaved" : ""}`} onClick={saveFile}
-            title={unsavedToFile ? "Not saved to a file yet: autosaved in this browser only. Save to a file to open it on another PC or share it (Ctrl+S)." : "Saved to a file (Ctrl+S)"}>
-            {unsavedToFile && <span className="unsaved-dot" aria-hidden />}Save to file
-          </button>
+        {/* Status, link check and the file buttons stay together and on screen: on a narrow window (a laptop at
+            125–150 % Windows scaling) they move to a second row instead of being pushed out of view. */}
+        <div className="bar-right">
+          <div className="status" title={"title" in status ? status.title : status.text}>
+            <span className={`dot ${status.dot}`} /><span className="label">{status.text}</span>
+          </div>
+          <LinkChip findings={findings} onOpen={() => setLinkOpen(true)} />
+          <div className="actions">
+            <button className="btn" onClick={() => setNewDialog(true)}>New</button>
+            <button className="btn" onClick={openFile}>Open</button>
+            <button className={`btn primary${unsavedToFile ? " unsaved" : ""}`} onClick={saveFile}
+              title={unsavedToFile ? "Not saved to a file yet: autosaved in this browser only. Save to a file to open it on another PC or share it (Ctrl+S)." : "Saved to a file (Ctrl+S)"}>
+              {unsavedToFile && <span className="unsaved-dot" aria-hidden />}Save to file
+            </button>
+          </div>
         </div>
       </header>
 
@@ -351,6 +376,9 @@ export default function App() {
             registerControl={(c) => { pfdControl.current = c; }}
             registerFlush={(f) => { flushBoard.current = f; }}
             openOperations={(equipmentId, uoId) => { setTab("operations"); setOpsFocus({ ...(equipmentId ? { equipmentId } : {}), ...(uoId ? { uoId } : {}), n: Date.now() }); }}
+            renderStart={startHidden === project.id ? undefined : (addUnit) => (
+              <StartCard onOpenExample={openExample} onOpenFile={openFile} onAddUnit={addUnit} onHide={() => hideStart(project.id)} />
+            )}
           />
         </div>
         {tab !== "pfd" && (
@@ -404,7 +432,7 @@ function NewProjectDialog(props: { onCancel: () => void; onCreate: (name: string
     >
       <label style={{ display: "grid", gap: 4 }}>
         <span>Process name</span>
-        <input data-autofocus className="search" style={{ width: "100%" }} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") props.onCreate(name, samples); }} />
+        <input data-autofocus className="search" style={{ width: "100%" }} value={name} onChange={(e) => setName(e.target.value)} />
       </label>
       <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <input type="checkbox" checked={samples} onChange={(e) => setSamples(e.target.checked)} />

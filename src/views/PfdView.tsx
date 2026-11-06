@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
-  CaptureUpdateAction, Excalidraw, MainMenu, WelcomeScreen, convertToExcalidrawElements, getLibraryItemsHash, getSceneVersion,
+  CaptureUpdateAction, Excalidraw, MainMenu, WelcomeScreen, convertToExcalidrawElements, getCommonBounds, getLibraryItemsHash, getSceneVersion,
 } from "@excalidraw/excalidraw";
 import type {
   AppState, BinaryFileData, BinaryFiles, DataURL, ExcalidrawImperativeAPI, ExcalidrawInitialDataState, LibraryItems,
@@ -148,6 +148,8 @@ export function PfdView(props: {
   goTo?: (area: Area) => void;
   /** Show a piece of equipment (or the Operations screen) from a shape's panel. */
   openOperations?: (equipmentId?: string, uoId?: string) => void;
+  /** What an empty project shows on the process map (the start card), given a way to add a unit operation. */
+  renderStart?: (addUnit: () => void) => ReactNode;
 }) {
   const { project } = props;
   const propsRef = useRef(props);
@@ -814,12 +816,15 @@ export function PfdView(props: {
           {sheetTabs.map((u) => (
             <button key={u.id} role="tab" className={`sheet-tab${onMap.has(u.id) ? "" : " off"}`} aria-selected={scope === u.id} onClick={() => openScope(u.id)}
               title={onMap.has(u.id) ? `${u.code} · ${u.name}` : `${u.code} · ${u.name} — not on the process map`}>
-              <span className="mono">{u.code}</span> <span className="sheet-tab-name">{u.name}</span>
+              {/* The code on every tab; the open one also shows the name (all names are in the tooltips). */}
+              <span className="mono">{u.code}</span><span className="sheet-tab-name"> {u.name}</span>
             </button>
           ))}
           <button className="sheet-tab add" onClick={() => actions.addUnit(`Unit operation ${uos.length + 1}`, true)} title="Add a unit operation (a box on the process map and its own drawing)">+ Unit operation</button>
         </div>
         <div className="sheet-actions">
+          <button className="btn small" onClick={() => { const a = apiRef.current; if (a) fitView(a, true); }}
+            title="Show the whole drawing in the window (Shift+1)">Fit</button>
           {current && (project.operations[current.id] ?? []).length > 0 && (
             <button className={`btn small${stepView ? " on" : ""}`} aria-pressed={!!stepView} onClick={() => setStepView(stepView ? null : { at: 0 })}
               title="Show what each step does on this drawing: valves open or closed, pumps running, the streams of the step">Step view</button>
@@ -853,7 +858,9 @@ export function PfdView(props: {
             onChange={handleChange}
             onLibraryChange={handleLibraryChange}
             onAddUnit={() => actions.addUnit("Unit operation", false)}
+            starting={scope === MAP && uos.length === 0 && !!props.renderStart}
           />
+          {scope === MAP && uos.length === 0 && props.renderStart?.(() => actions.addUnit("Unit operation", false))}
           {notApplied && props.goTo && (
             <div className="pfd-banner" role="status">
               <span>{project.mb.current ? "The Mass Balance workbook changed after its values were applied: labels show the values applied before." : "The Mass Balance workbook is not applied yet: labels show Stream IDs only."}</span>
@@ -923,6 +930,31 @@ function imageSize(dataURL: string, svgText?: string): Promise<{ width: number; 
   });
 }
 
+/**
+ * Show the drawing. `whole` (the Fit button): all of it in the window, not zoomed in past 100 %. Otherwise (a
+ * drawing opened from a file): all of it if that keeps the text readable (zoom ≥ 50 %), else readable size from
+ * its left edge, where a process starts — a long process map is then scrolled, not shrunk to unreadable boxes.
+ */
+const READABLE_ZOOM = 0.5;
+function fitView(api: Api, whole: boolean) {
+  const els = api.getSceneElements();
+  if (!els.length) return;
+  const st = api.getAppState();
+  const [x1, y1, x2, y2] = getCommonBounds(els);
+  const pad = 40;
+  const fits = Math.min((st.width - 2 * pad) / Math.max(1, x2 - x1), (st.height - 2 * pad) / Math.max(1, y2 - y1), 1);
+  if (whole || fits >= READABLE_ZOOM) {
+    api.scrollToContent(els, { fitToViewport: true, viewportZoomFactor: 0.9, maxZoom: 1, minZoom: 0.1, animate: whole });
+    return;
+  }
+  const z = READABLE_ZOOM;
+  const tallFits = (y2 - y1) * z <= st.height - 2 * pad;
+  api.updateScene({
+    appState: { zoom: { value: z as AppState["zoom"]["value"] }, scrollX: pad / z - x1, scrollY: tallFits ? st.height / (2 * z) - (y1 + y2) / 2 : pad / z - y1 } as AppState,
+    captureUpdate: CaptureUpdateAction.NEVER,
+  });
+}
+
 function focusEl(api: Api, elementId: string) {
   const el = api.getSceneElements().find((e) => e.id === elementId);
   if (!el) return;
@@ -939,7 +971,23 @@ function SheetCanvas(props: {
   onChange: (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => void;
   onLibraryChange: (items: LibraryItems) => void;
   onAddUnit: () => void;
+  /** The start card covers the middle of the empty process map: leave out the editor's own welcome text. */
+  starting?: boolean;
 }) {
+  // A drawing without a saved position (opened from a file, or new) fits the window once it is on screen.
+  const fitOnOpen = useRef(props.sheet.view?.scrollX === undefined && props.sheet.elements.length > 0);
+  const onApi = (api: Api) => {
+    props.onApi(api);
+    if (!fitOnOpen.current) return;
+    fitOnOpen.current = false;
+    let tries = 0;
+    const tryFit = () => {
+      // The scene and the canvas size arrive a few frames after the editor.
+      if (api.getSceneElements().length && api.getAppState().width > 0) fitView(api, false);
+      else if (++tries < 60) requestAnimationFrame(tryFit);
+    };
+    requestAnimationFrame(tryFit);
+  };
   const initialData = useMemo<ExcalidrawInitialDataState>(() => {
     const v = props.sheet.view ?? {};
     return {
@@ -959,7 +1007,7 @@ function SheetCanvas(props: {
   }, []);
   return (
     <Excalidraw
-      excalidrawAPI={props.onApi}
+      excalidrawAPI={onApi}
       initialData={initialData}
       onChange={props.onChange}
       onLibraryChange={props.onLibraryChange}
@@ -974,7 +1022,9 @@ function SheetCanvas(props: {
         <MainMenu.Separator />
         <MainMenu.DefaultItems.Help />
       </MainMenu>
-      {props.isMap ? (
+      {props.isMap && props.starting ? (
+        <WelcomeScreen><WelcomeScreen.Hints.ToolbarHint>Draw an arrow from one unit operation box to another for a transfer</WelcomeScreen.Hints.ToolbarHint></WelcomeScreen>
+      ) : props.isMap ? (
         <WelcomeScreen>
           <WelcomeScreen.Center>
             <WelcomeScreen.Center.Heading>Process map</WelcomeScreen.Center.Heading>

@@ -40,21 +40,24 @@ button, input, select, textarea { font: inherit; color: inherit; }
 ::placeholder { color: var(--faint); opacity: 1; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-.app { display: grid; grid-template-rows: var(--bar-h) auto minmax(0, 1fr); height: 100%; }
+.app { display: grid; grid-template-rows: auto auto minmax(0, 1fr); height: 100%; }
 .preview-banner { background: var(--warn-soft); color: var(--warn); font-size: var(--fs-sm); padding: 6px 14px; border-bottom: 1px solid var(--line); }
 
 /* top bar */
 .bar {
-  display: flex; align-items: center; gap: 14px; padding: 0 14px;
+  display: flex; align-items: center; gap: 0 14px; padding: 0 14px; min-height: var(--bar-h); flex-wrap: wrap;
   background: var(--surface); border-bottom: 1px solid var(--line); min-width: 0;
 }
+/* Status, link check and the file buttons: one group, always at the right; on a narrow window it takes a second row
+   rather than leaving the screen (Open and Save to file must always be visible). */
+.bar-right { display: flex; align-items: center; gap: 14px; margin-left: auto; flex: none; padding: 6px 0; }
 .project-name {
   border: 1px solid transparent; background: transparent; border-radius: var(--r); padding: 4px 6px;
   font-weight: 600; font-size: var(--fs-lg); width: 240px; min-width: 80px; text-overflow: ellipsis;
 }
 .project-name:hover { border-color: var(--line); }
 .project-name:focus { border-color: var(--accent); background: var(--surface); outline: none; }
-.tabs { display: flex; gap: 2px; height: 100%; align-items: stretch; flex: none; }
+.tabs { display: flex; gap: 2px; align-self: stretch; min-height: var(--bar-h); align-items: stretch; flex: none; }
 .tab {
   border: 0; background: none; padding: 0 14px; cursor: pointer; color: var(--muted); font-weight: 500;
   border-bottom: 2px solid transparent; display: flex; align-items: center; gap: 6px;
@@ -97,11 +100,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .sheet-tab:hover { color: var(--ink); }
 .sheet-tab[aria-selected="true"] { color: var(--accent); border-color: var(--line-strong); border-bottom: 1px solid var(--surface); font-weight: 600; }
 .sheet-tab.map { font-weight: 600; }
-.sheet-tab { min-width: 72px; }
 .sheet-tab.map, .sheet-tab[aria-selected="true"] { flex: none; }
 .sheet-tab.off { font-style: italic; color: var(--faint); }
 .sheet-tab.add { border-style: dashed; color: var(--accent); background: transparent; }
 .sheet-tab-name { color: inherit; }
+.sheet-tab:not([aria-selected="true"]) .sheet-tab-name { display: none; }
+/* Tabs keep their size (the code is short); with many unit operations the tab row scrolls sideways. */
+.sheet-tab { flex: none; }
 .sheet-note {
   position: absolute; left: 50%; top: 64px; transform: translateX(-50%); z-index: 5; background: #fff8e6; border: 1px solid #f0d58c;
   border-radius: var(--r); padding: 6px 10px; font-size: var(--fs); display: flex; gap: 8px; align-items: center; box-shadow: 0 2px 6px rgb(0 0 0 / .08);
@@ -181,7 +186,6 @@ tr.row-bad td.idx { color: var(--err); box-shadow: inset 3px 0 0 var(--err); }
   .project-name { width: 140px; }
 }
 @media (max-width: 700px) {
-  .bar { overflow-x: auto; }
   .page { padding: 16px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
@@ -198,6 +202,10 @@ tr.row-bad td.idx { color: var(--err); box-shadow: inset 3px 0 0 var(--err); }
 .field { display: grid; gap: 4px; font-size: var(--fs-sm); color: var(--muted); }
 .check { display: flex; gap: 8px; align-items: center; font-size: var(--fs); cursor: pointer; }
 .check input { accent-color: var(--accent); }
+/* Check boxes big enough to hit (13 px by default) on the screens and in dialogs; the drawing editor keeps its own. */
+.screen-layer input[type="checkbox"], .dialog input[type="checkbox"], .guide input[type="checkbox"], .pfd-panel input[type="checkbox"] {
+  width: 18px; height: 18px; accent-color: var(--accent); vertical-align: middle; margin: 0 2px; flex: none; cursor: pointer;
+}
 .panel-tabs { display: flex; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--surface); z-index: 1; }
 .panel-tab { flex: 1; border: 0; background: none; padding: 9px 4px; cursor: pointer; color: var(--muted); font-size: var(--fs); font-weight: 500; border-bottom: 2px solid transparent; }
 .panel-tab:hover { color: var(--ink); }
@@ -477,7 +485,7 @@ table.ops-steps td.idx { padding-top: 10px; }
 .op-chip.act { font-weight: 600; background: #f3f5f7; }
 .op-chip.act.on { background: var(--ok-soft); border-color: #7fbf95; color: var(--ok); }
 .op-chip.act.check { font-weight: 400; border-style: dashed; color: var(--muted); }
-.op-x { border: 0; background: none; color: var(--faint); cursor: pointer; padding: 0 4px; font-size: var(--fs-md); line-height: 1; border-radius: 999px; }
+.op-x { border: 0; background: none; color: var(--faint); cursor: pointer; padding: 0 4px; font-size: var(--fs-md); line-height: 1; border-radius: 999px; min-width: 24px; min-height: 24px; display: inline-grid; place-items: center; align-self: center; }
 .op-x:hover { color: var(--err); background: var(--err-soft); }
 .op-add { border: 1px dashed var(--line-strong); background: var(--surface); color: var(--accent); border-radius: 999px; padding: 2px 8px; font-size: var(--fs-sm); cursor: pointer; max-width: 150px; }
 .op-add:hover { border-color: var(--accent); }
@@ -528,7 +536,9 @@ table.changes-table td { vertical-align: top; }
 .unsaved-dot { width: 9px; height: 9px; border-radius: 50%; background: #f5b335; box-shadow: 0 0 0 2px rgb(255 255 255 / .6); flex: none; }
 .bar .tab { padding: 0 11px; }
 @media (max-width: 1360px) { .bar .guide-btn { padding-left: 8px; padding-right: 8px; } .bar .project-name { width: 180px; } }
-@media (max-width: 1360px) { .bar .status .label { display: none; } }
+/* Below 1500 px the autosave time is in the dot's tooltip, so the top bar fits a 1366 px laptop on one row. */
+@media (max-width: 1500px) { .bar .status .label { display: none; } .bar .project-name { width: 170px; } }
+@media (max-width: 1300px) { .bar .tab { padding: 0 8px; } .bar .project-name { width: 130px; } }
 
 /* Step view on the PFD (N4.14): a layer over the drawing */
 .step-layer { position: absolute; inset: 0; pointer-events: none; z-index: 4; overflow: hidden; }
@@ -576,3 +586,22 @@ input.dup-tag { width: 64px; display: inline-block; margin: 0 4px; padding: 1px 
 .wu-qty { margin-bottom: 10px; }
 .wu-qty h3 { margin: 0 0 6px; font-size: var(--fs-md); }
 tr.wu-total td { font-weight: 600; border-top: 2px solid var(--line-strong); }
+
+/* N5.1: the start card of an empty project (over the process map) */
+.start-card {
+  position: absolute; z-index: 5; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(620px, calc(100% - 32px));
+  max-height: calc(100% - 32px); overflow: auto; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 10px;
+  box-shadow: 0 8px 28px rgb(0 0 0 / .12); padding: 18px 20px 14px; display: grid; gap: 10px;
+}
+.start-head { display: flex; align-items: center; justify-content: space-between; }
+.start-head h2 { margin: 0; font-size: var(--fs-xl); }
+.start-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.start-about, .start-note, .start-version { margin: 0; font-size: var(--fs-sm); color: var(--muted); }
+.start-note { background: var(--sunken); border-radius: var(--r); padding: 8px 10px; color: var(--ink); }
+.start-more summary { cursor: pointer; color: var(--accent); font-size: var(--fs-sm); }
+.start-list { margin-top: 6px; gap: 6px; }
+.start-list a { color: var(--accent); }
+/* N5.1: a screen's explanation in one line, the rest behind "More" */
+.intro-toggle { border: 0; background: none; padding: 0 2px; color: var(--accent); cursor: pointer; font: inherit; text-decoration: underline dotted; white-space: nowrap; }
+.guide-version { font-size: var(--fs-xs); color: var(--muted); padding: 8px 16px 10px; border-top: 1px solid var(--line); display: flex; gap: 10px; flex-wrap: wrap; }
+.guide-version a { color: var(--accent); }

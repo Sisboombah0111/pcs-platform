@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { PageIntro } from "../ui/PageIntro";
 import { computeBom } from "../bom/model";
 import { usageCounts } from "../model/whereUsed";
 import { WhereUsedDialog, type GoPlace } from "./WhereUsed";
@@ -214,7 +215,7 @@ export function MaterialsView(props: {
         <div className="page-head">
           <div>
             <h1>Materials</h1>
-            <p>The material list used by the BOM and by MB workbooks (MatCode in PCS_LINK). Codes must be unique in the project, and every quantity is counted in the unit given here.</p>
+            <PageIntro id="materials" lead="The material list used by the BOM and by MB workbooks (MatCode in PCS_LINK).">Codes must be unique in the project, and every quantity is counted in the unit given here.</PageIntro>
           </div>
           <div className="spacer" />
           <div className="toolbar">
@@ -288,12 +289,12 @@ export function MaterialsView(props: {
                         <td><input className={`cell-input mono${badCode ? " bad" : ""}`} value={m.code} onChange={(e) => update(m.id, "code", e.target.value)} aria-label="Code" title={badCode ? (m.code ? "Duplicate code" : "Code is empty") : undefined}
                           onFocus={() => setCodeAtFocus({ id: m.id, code: m.code })}
                           onBlur={() => { if (codeAtFocus?.id === m.id && codeAtFocus.code && m.code && codeAtFocus.code !== m.code && !badCode) noteRename(codeAtFocus.code, m.code); setCodeAtFocus(null); }} /></td>
-                        <td><input className="cell-input" value={m.name} onChange={(e) => update(m.id, "name", e.target.value)} aria-label="Name" placeholder="Material name" /></td>
+                        <td><input className="cell-input" value={m.name} title={m.name} onChange={(e) => update(m.id, "name", e.target.value)} aria-label="Name" placeholder="Material name" /></td>
                         <td><input className={`cell-input mono${badUnit ? " bad" : ""}`} value={m.unit} list="units" onChange={(e) => update(m.id, "unit", e.target.value)} aria-label="Unit" /></td>
-                        <td><input className="cell-input" value={m.category ?? ""} onChange={(e) => update(m.id, "category", e.target.value)} aria-label="Category" /></td>
-                        <td><input className="cell-input" value={m.spec ?? ""} onChange={(e) => update(m.id, "spec", e.target.value)} aria-label="Spec" /></td>
+                        <td><input className="cell-input" value={m.category ?? ""} title={m.category ?? ""} onChange={(e) => update(m.id, "category", e.target.value)} aria-label="Category" /></td>
+                        <td><input className="cell-input" value={m.spec ?? ""} title={m.spec ?? ""} onChange={(e) => update(m.id, "spec", e.target.value)} aria-label="Spec" /></td>
                         <td><OverageInput value={m.overagePct} onChange={(v) => onChange(materials.map((x) => (x.id === m.id ? withOverage(x, v) : x)))} /></td>
-                        <td><input className="cell-input" value={m.note ?? ""} onChange={(e) => update(m.id, "note", e.target.value)} aria-label="Note" /></td>
+                        <td><input className="cell-input" value={m.note ?? ""} title={m.note ?? ""} onChange={(e) => update(m.id, "note", e.target.value)} aria-label="Note" /></td>
                         {buying && <>
                           <td><input className="cell-input" value={m.supplier ?? ""} onChange={(e) => update(m.id, "supplier", e.target.value)} aria-label={`Supplier of ${m.code}`} /></td>
                           <td><input className="cell-input mono" value={m.partNo ?? ""} onChange={(e) => update(m.id, "partNo", e.target.value)} aria-label={`Part no. of ${m.code}`} /></td>
@@ -492,11 +493,12 @@ function PackInput(props: { value?: number; unit: string; code: string; onChange
 }
 
 const MATERIAL_HEADS: Head[] = [
-  { id: "row", width: 64, ariaLabel: "Row" }, { id: "code", label: "Code", width: 130 }, { id: "name", label: "Name", min: 200 }, { id: "unit", label: "Unit", width: 76 },
-  { id: "category", label: "Category", width: 110 }, { id: "spec", label: "Spec", width: 130 },
-  { id: "overage", label: "Overage %", width: 88, title: "Default overage for BOM lines of this material" }, { id: "note", label: "Note", width: 130 },
-  { id: "refs", label: "Recipe · Backups", width: 210, title: "Recipe: the material is made in-house from components (a buffer, a medium …). Backups: alternate materials." },
-  { id: "status", label: "Status", width: 136, title: "In use, Under review, or Obsolete (the BOM asks to replace an obsolete material)" },
+  // Widths that fit a 1366 px laptop without sideways scrolling, the name getting the most room (N5.1).
+  { id: "row", width: 56, ariaLabel: "Row" }, { id: "code", label: "Code", width: 112 }, { id: "name", label: "Name", min: 240 }, { id: "unit", label: "Unit", width: 64 },
+  { id: "category", label: "Category", width: 104 }, { id: "spec", label: "Spec", width: 120 },
+  { id: "overage", label: "Overage %", width: 84, title: "Default overage for BOM lines of this material" }, { id: "note", label: "Note", width: 100 },
+  { id: "refs", label: "Recipe · Backups", width: 190, title: "Recipe: the material is made in-house from components (a buffer, a medium …). Backups: alternate materials." },
+  { id: "status", label: "Status", width: 128, title: "In use, Under review, or Obsolete (the BOM asks to replace an obsolete material)" },
   { id: "bom", label: "Used", width: 64, title: "Places that use the material: click for Where used" }, { id: "menu", width: 52, ariaLabel: "More" },
 ];
 

@@ -5,3 +5,4 @@ public/excalidraw/
 *.log
 .DS_Store
 public/gridcraft/
+public/examples/

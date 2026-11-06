@@ -37,6 +37,7 @@ const stored = () => page.evaluate(async () => {
   return JSON.parse(rec.text);
 });
 const tabs = () => page.locator(".sheet-tab").allInnerTexts();
+const tabTitles = () => page.locator(".sheet-tab:not(.map):not(.add)").evaluateAll((ts) => ts.map((t) => t.title));
 const openTab = async (text) => {
   await page.locator(".sheet-tab", { hasText: text }).first().click();
   await page.waitForFunction(() => window.__pcsPfd?.api);
@@ -119,7 +120,8 @@ const boxes = els.filter((e) => e.pcs?.kind === "uo" && e.type === "rectangle");
 check("two UO boxes on the process map", boxes.length === 2, boxes.length);
 check("box texts '<code>\\n<name>'", textIn(els, boxes[0].id) === "100L\n100L Bioreactor" && textIn(els, boxes[1].id) === "HARVE\nHarvest clarification",
   `${JSON.stringify(textIn(els, boxes[0].id))} ${JSON.stringify(textIn(els, boxes[1].id))}`);
-check("a tab per unit operation", JSON.stringify(await tabs()) === JSON.stringify(["Process map", "100L 100L Bioreactor", "HARVE Harvest clarification", "+ Unit operation"]), (await tabs()).join(" | "));
+// N5.1: a drawing tab shows the code (the open one also the name); every tab has code · name as its tooltip.
+check("a tab per unit operation", JSON.stringify(await tabs()) === JSON.stringify(["Process map", "100L", "HARVE", "+ Unit operation"]) && JSON.stringify(await tabTitles()) === JSON.stringify(["100L · 100L Bioreactor", "HARVE · Harvest clarification"]), `${(await tabs()).join(" | ")} / ${(await tabTitles()).join(" | ")}`);
 
 await fitView();
 const TRANSFER = await drawArrow(centre(boxes[0]), centre(boxes[1]));
@@ -273,7 +275,7 @@ p = await stored();
 }
 check("…and on the connector here",textIn(els, ports(els)[0].id) === "To CLAR\nST-100L-HARVE", JSON.stringify(textIn(els, ports(els)[0].id)));
 check("Stream IDs do not change with the code", streamOf(els, SEG) === "ST-100L-HARVE");
-check("the tab shows the new code", (await tabs()).includes("CLAR Harvest clarification"), (await tabs()).join(" | "));
+check("the tab shows the new code", (await tabs()).includes("CLAR") && (await tabTitles()).includes("CLAR · Harvest clarification"), (await tabs()).join(" | "));
 
 // ---- add a unit operation from the tab bar, then delete it -------------------------------------------------
 await page.locator(".sheet-tab.add").click();

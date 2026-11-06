@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { PageIntro } from "../ui/PageIntro";
 import { addManualLine, batchesFor, computeBom, removeLine, setLine, type Values, type BomBackup, type BomPart, type BomResult, type BomRow, type BomTotal, type BomUo } from "../bom/model";
 import { fmtQty } from "../mb/model";
 import { batchSize, componentText, recipeOf, withBackups } from "../model/recipes";
@@ -101,7 +102,7 @@ export function BomView(props: { project: Project; update: Update; confirm: Conf
         <div className="page-head">
           <div>
             <h1>BOM</h1>
-            <p>Material quantities per unit operation, for each scenario. Every line takes its quantity from one source: the applied mass balance (<b>MB</b>), counts linked on PFD shapes (<b>PFD</b>), or a number entered here (<b>Manual</b>, with a reason). Quantity = source value × (1 + overage). A material made in-house (a buffer with a recipe) is followed by its components (<b>Recipe</b>); alternate materials are listed as <b>Backup</b> and kept out of the totals.</p>
+            <PageIntro id="bom" lead="Material quantities per unit operation, for each scenario.">Every line takes its quantity from one source: the applied mass balance (<b>MB</b>), counts linked on PFD shapes (<b>PFD</b>), or a number entered here (<b>Manual</b>, with a reason). Quantity = source value × (1 + overage). A material made in-house (a buffer with a recipe) is followed by its components (<b>Recipe</b>); alternate materials are listed as <b>Backup</b> and kept out of the totals.</PageIntro>
           </div>
           <div className="spacer" />
           <div className="toolbar">
@@ -345,11 +346,12 @@ function UoSection(props: {
   const scen = bom.scenarios;
   // The same column widths in every unit operation's table.
   const heads: Head[] = [
-    { id: "code", label: "Code", width: 124 }, { id: "material", label: "Material", min: 140 }, { id: "unit", label: "Unit", width: 56 }, { id: "source", label: "Source", width: 220 },
+    // The material name gets the room (it wrapped to three lines on a 1366 px laptop before N5.1).
+    { id: "code", label: "Code", width: 116 }, { id: "material", label: "Material", min: 200 }, { id: "unit", label: "Unit", width: 56 }, { id: "source", label: "Source", width: 190 },
     ...scen.map((s): Head => ({ id: `base:${s.id}`, label: s.name, width: 100, className: "num", title: "Value from the source, before overage" })),
     { id: "overage", label: "Overage %", width: 92, className: "num", title: "Empty: the material's default" },
     ...scen.map((s): Head => ({ id: `total:${s.id}`, label: `${s.name} total`, width: 112, className: "num" })),
-    { id: "note", label: "Reason / note", width: 164 }, { id: "actions", width: 84, ariaLabel: "Actions" },
+    { id: "note", label: "Reason / note", width: 140 }, { id: "actions", width: 84, ariaLabel: "Actions" },
   ];
   const cols = useColumns("bom-lines", heads);
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { PageIntro } from "../ui/PageIntro";
 import { ScenariosDialog } from "./ScenariosDialog";
 import { setScenarios } from "../mb/scenarios";
 import { gridcraftAvailable } from "../mb/gridcraft";
@@ -227,7 +228,7 @@ export function MbView(props: {
         <div className="page-head">
           <div>
             <h1>Mass Balance</h1>
-            <p>Your own MB workbook, with a sheet named <span className="mono">PCS_LINK</span> that lists values per Stream ID. The app reads only that sheet: flow rows go on the PFD labels, material rows go to the BOM.</p>
+            <PageIntro id="mb" lead={<>Your own MB workbook, with a sheet named <span className="mono">PCS_LINK</span> that lists values per Stream ID.</>}>The app reads only that sheet: flow rows go on the PFD labels, material rows go to the BOM.</PageIntro>
           </div>
         </div>
 
@@ -247,10 +248,10 @@ export function MbView(props: {
           ) : (
             <div className="mb-file">
               <div className="mb-file-main">
-                <span className="mono mb-file-name">{wb.name}</span>
+                {/* The file's fingerprint and the saving application's full build string are in the tooltips. */}
+                <span className="mono mb-file-name" title={`SHA-256 ${wb.sha256} (the file's fingerprint: the applied values record which file they came from)`}>{wb.name}</span>
                 <span className="chip">{wb.source === "gridcraft" ? "Saved in GridCraft" : "Uploaded"} {timeOf(wb.updatedAt)}</span>
-                {wb.savedBy && <span className="chip" title="Application that last saved the file">Saved by {wb.savedBy}</span>}
-                <span className="chip mono" title={`SHA-256 ${wb.sha256}`}>{short(wb.sha256)}</span>
+                {wb.savedBy && <span className="chip" title={`Application that last saved the file: ${wb.savedBy}`}>Saved by {appName(wb.savedBy)}</span>}
                 {applied ? <span className="chip ok">Applied</span> : mb.current ? <span className="chip warn">Not applied yet</span> : <span className="chip warn">Never applied</span>}
               </div>
               <div className="toolbar">
@@ -547,4 +548,10 @@ export function MaterialTotalsTable({ totals, project }: { totals: MaterialTotal
       </table>
     </div>
   );
+}
+
+/** "LibreOffice/24.2.7.2$Linux_X86_64 LibreOffice_project/…" → "LibreOffice"; "Microsoft Excel" stays as it is. */
+function appName(savedBy: string): string {
+  const name = savedBy.split(/[/$]/)[0].trim();
+  return name || savedBy;
 }

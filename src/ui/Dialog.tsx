@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 
 export function Dialog(props: {
   title: string;
@@ -10,15 +10,31 @@ export function Dialog(props: {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
-    ref.current?.querySelector<HTMLElement>("[data-autofocus], .foot .btn.primary, .foot .btn")?.focus();
+    // The cursor goes to the first field to fill in (or a field marked data-autofocus); without fields, to the main button.
+    const root = ref.current;
+    const target = root?.querySelector<HTMLElement>("[data-autofocus]")
+      ?? root?.querySelector<HTMLElement>(".body input:not([type=checkbox]):not([type=radio]):not([type=file]):not([disabled]), .body textarea:not([disabled])")
+      ?? root?.querySelector<HTMLElement>(".foot .btn.primary:not([disabled]), .foot .btn");
+    target?.focus();
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); props.onClose(); } };
     window.addEventListener("keydown", onKey, true);
     return () => { window.removeEventListener("keydown", onKey, true); prev?.focus?.(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  /** Enter in a one-line field = the main button (unless the field used Enter itself, e.g. to leave the field). */
+  const enterSubmits = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Enter" || e.defaultPrevented || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey || e.nativeEvent.isComposing) return;
+    const t = e.target;
+    if (!(t instanceof HTMLInputElement) || !["text", "number", "search", "email", "tel", "url", ""].includes(t.type)) return;
+    setTimeout(() => {
+      if (document.activeElement !== t || !t.isConnected) return;
+      const main = ref.current?.querySelector<HTMLButtonElement>(".foot .btn.primary");
+      if (main && !main.disabled) main.click();
+    }, 0);
+  };
   return (
     <div className="scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) props.onClose(); }}>
-      <div className={`dialog${props.wide ? " wide" : ""}`} role="dialog" aria-modal="true" aria-label={props.title} ref={ref}>
+      <div className={`dialog${props.wide ? " wide" : ""}`} role="dialog" aria-modal="true" aria-label={props.title} ref={ref} onKeyDown={enterSubmits}>
         <h2>{props.title}</h2>
         <div className="body">{props.children}</div>
         <div className="foot">{props.actions}</div>

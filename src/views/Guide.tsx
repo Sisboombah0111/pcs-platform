@@ -4,6 +4,7 @@ import { RULES, SCREENS, STATE_LABEL, STEPS, UI, t, type GoTarget, type Lang, ty
 import { guideStatus, nextStep, type StepId } from "../guide/status";
 import type { LinkFinding } from "../link/check";
 import type { Project } from "../model/types";
+import { BUILD_DATE, RELEASES_URL, REPO_URL, SITE_URL, versionLabel, whereRunning } from "../version";
 
 /** Per-viewer conveniences, remembered in this browser only; storage may be unavailable. */
 const KEY = "pcs.guide.";
@@ -119,6 +120,12 @@ export function GuidePanel(props: {
             ))}
           </div>
         )}
+      </div>
+      <div className="guide-version">
+        <span>PCS Platform {versionLabel()}{BUILD_DATE ? ` · ${BUILD_DATE}` : ""}</span>
+        {whereRunning() !== "site" && <a href={SITE_URL} target="_blank" rel="noreferrer">{lang === "ko" ? "사이트" : "Site"}</a>}
+        <a href={RELEASES_URL} target="_blank" rel="noreferrer">{lang === "ko" ? "PC 버전 (zip)" : "PC version (zip)"}</a>
+        <a href={REPO_URL} target="_blank" rel="noreferrer">GitHub</a>
       </div>
     </aside>
   );

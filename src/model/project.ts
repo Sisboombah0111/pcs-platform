@@ -322,6 +322,22 @@ export function validateProject(p: Project): ProjectIssue[] {
   return issues;
 }
 
+/**
+ * The project without the zoom and scroll position saved with each drawing (background and grid stay): they were
+ * right for the screen the file was saved on. Drawings without one fit the window they open in. Nothing else
+ * changes: elements, Stream IDs, tags and every other part of the project are the same objects.
+ */
+export function withoutViewPositions(p: Project): Project {
+  const strip = (sh: PfdSheet): PfdSheet => {
+    if (!sh.view) return sh;
+    const view: PfdView = {};
+    if (sh.view.viewBackgroundColor !== undefined) view.viewBackgroundColor = sh.view.viewBackgroundColor;
+    if (sh.view.gridModeEnabled !== undefined) view.gridModeEnabled = sh.view.gridModeEnabled;
+    return { ...sh, view };
+  };
+  return { ...p, pfd: { ...p.pfd, map: strip(p.pfd.map), sheets: Object.fromEntries(Object.entries(p.pfd.sheets).map(([k, sh]) => [k, strip(sh)])) } };
+}
+
 /** Stamp the modification time (call on every user change). */
 export function touch(p: Project, now = new Date().toISOString()): Project {
   return { ...p, meta: { ...p.meta, updatedAt: now } };

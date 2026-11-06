@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { PageIntro } from "../ui/PageIntro";
 import { fmtQty } from "../mb/model";
 import { newId } from "../model/ids";
 import type { Equipment, EquipmentType, OpStep, Project, UnitOperation } from "../model/types";
@@ -114,8 +115,8 @@ export function OperationsView(props: {
         <div className="page-head">
           <div>
             <h1>Operations</h1>
-            <p>The steps of each unit operation and what is done to the equipment in each step: <b>open or close</b> a valve, <b>start or stop</b> a pump or an agitator.
-              Give the PFD shapes their tags (select a shape › <b>Equipment tag</b>) or add equipment here; a step names the <b>Stream IDs</b> that flow in it.</p>
+            <PageIntro id="operations" lead="The steps of each unit operation and what is done to the equipment in each step.">
+              <b>Open or close</b> a valve, <b>start or stop</b> a pump or an agitator. Give the PFD shapes their tags (select a shape › <b>Equipment tag</b>) or add equipment here; a step names the <b>Stream IDs</b> that flow in it.</PageIntro>
           </div>
           <div className="spacer" />
           <div className="toolbar">

@@ -4,9 +4,13 @@ A web app for bioprocess design that links the **PFD** (process flow diagram), t
 
 ## Use it
 
-Open **https://sisboombah0111.github.io/pcs-platform/** in Chrome or Edge. There is nothing to install. Work autosaves in that browser; **Save to file** and **Open** move a project (`.pcs.json`) between people and computers. Example projects and workbooks are in [`examples/`](examples/): download one, then **Open** it (or **Upload Excel workbook…** on the Mass Balance screen).
+Open **https://sisboombah0111.github.io/pcs-platform/** in Chrome or Edge. There is nothing to install. Work autosaves in that browser; **Save to file** and **Open** move a project (`.pcs.json`) between people and computers.
 
-Each address keeps its own autosave: work done at another address (for example http://localhost:5173 on your PC) is not shown on the site. Move it with **Save to file** there and **Open** on the site.
+A new, empty project shows **Start here**: **Open the example** (the downstream mAb process, with its Mass Balance applied) opens right in the app, and *More examples and example workbooks* has the small example and the example MB workbook, material list and operation steps to download. The same files are in [`examples/`](examples/).
+
+**PC version** (for computers where the site does not open, e.g. a company network): download the zip from the [latest release](https://github.com/Sisboombah0111/pcs-platform/releases/latest), extract it to a new folder (e.g. `C:\PCS\v5.1.0`), open `pcs-app` and double-click `start-windows.cmd`. It needs [Node.js](https://nodejs.org/) and nothing else. The version is at the bottom of the **Guide** panel.
+
+Each address keeps its own autosave: work done at another address (for example the PC version at http://localhost:5173) is not shown on the site. Move it with **Save to file** there and **Open** on the site.
 
 Project data never goes to GitHub: it stays in each user's browser and in the files they save.
 
@@ -36,6 +40,7 @@ Project data never goes to GitHub: it stays in each user's browser and in the fi
 | N4.15 | **Purchasing** on Materials (supplier, part no., pack size; shown with the *Purchasing* box) and **whole packs to order** on the BOM totals (⌈total ÷ pack size⌉, in the Excel too); **select materials and edit them together** (category, spec, overage, supplier, pack size, note, status) or delete them, with undo; **duplicate a unit operation** (drawing with new Stream IDs, steps with their streams, BOM lines, equipment with new tags such as XV-101 → XV-201, or the same equipment) | Done |
 | N4.16 | **Scenarios** beyond Sending / Receiving (Mass Balance › Scenarios: add, rename, order, PCS_LINK column, remove — the workbook check says when a column is missing); every screen, label and export shows them all; the **material view** (Where used) shows the material's facts and its quantities per unit operation and scenario, with the total, packs to order and batches | Done |
 | N5 | GitHub repository and the GitHub Pages site (deployed from `main` by Actions, GridCraft included), example projects, user guide | Done |
+| N5.1 | Screens that fit a laptop (top bar, drawings fitted on open, **Fit**, shorter explanations, columns), **Start here** with the examples in the app, the version in the Guide, the PC version as a release zip | Done |
 
 ## How to review
 
@@ -48,7 +53,7 @@ Open the "PCS Platform" preview link shared in the chat. It is a single-file bui
 ### 2. Run it on your PC (all features)
 
 1. Install the LTS version of [Node.js](https://nodejs.org/) (18 or newer runs the app; 22 or 24 LTS is best).
-2. **Windows**: extract the zip to a short folder that OneDrive does not sync (e.g. `C:\PCS\n4.16`), open the `pcs-app` folder and double-click `start-windows.cmd`. The zip comes with the app already built (the `dist` folder, GridCraft included), so nothing is installed: a small Node.js server (`tools/serve.mjs`, no packages) serves it and the browser opens at http://localhost:5173. Keep the black window open while you use the app; close it to stop. Started twice from the same folder, it only opens the browser again.
+2. **Windows**: download the zip from the [latest release](https://github.com/Sisboombah0111/pcs-platform/releases/latest) and extract it to a short folder that OneDrive does not sync (e.g. `C:\PCS\v5.1.0`), open the `pcs-app` folder and double-click `start-windows.cmd`. The zip comes with the app already built (the `dist` folder, GridCraft included), so nothing is installed: a small Node.js server (`tools/serve.mjs`, no packages) serves it and the browser opens at http://localhost:5173. Keep the black window open while you use the app; close it to stop. Started twice from the same folder, it only opens the browser again.
 3. **Any system, by hand**: in the folder, `node tools/serve.mjs` (or `npm run serve`) and open http://localhost:5173. Stop with Ctrl+C.
 4. **Without the `dist` folder** (a copy from GitHub): `start-windows.cmd` builds it once (`npm install`, GridCraft from its release, `npm run build`; needs Node.js 20.19+ and access to the npm registry). By hand: `npm install`, `npm run gridcraft`, `npm run build`, `npm run serve`.
 
@@ -367,6 +372,16 @@ LANG=C.UTF-8 node tools/smoke-operations.mjs http://localhost:4173/ # N4.12/N4.1
 LANG=C.UTF-8 node tools/smoke-history.mjs http://localhost:4173/    # N4.13: undo/redo outside the drawing, the change log
 LANG=C.UTF-8 node tools/smoke-purchasing.mjs http://localhost:4173/ # N4.15: purchasing columns and packs, editing many materials, duplicating a unit operation
 LANG=C.UTF-8 node tools/smoke-scenarios.mjs http://localhost:4173/  # N4.16: a third scenario from a new PCS_LINK column, remove and undo, the material view
+LANG=C.UTF-8 node tools/smoke-n51.mjs http://localhost:4173/        # N5.1: top bar at four screen sizes, Start here and the examples, fitted drawings, Fit, folded explanations, dialogs
+```
+
+**Linkage check for changes to the screens** — `tools/linkage-snapshot.mjs` records everything the linkage produces for a project (the saved file without views and times, the BOM, Materials, Operations and applied-MB Excel exports, the PowerPoint text, the link check, every PFD label). Take one before and one after a change and compare; a change meant for the screens only must leave them identical:
+
+```
+LANG=C.UTF-8 node tools/linkage-snapshot.mjs http://localhost:4173/ before.json examples/example-downstream.pcs.json
+#   … change, build …
+LANG=C.UTF-8 node tools/linkage-snapshot.mjs http://localhost:4173/ after.json examples/example-downstream.pcs.json
+node tools/linkage-snapshot.mjs --compare before.json after.json    # IDENTICAL, or each difference
 ```
 
 The other smoke tests run with the guide closed (they set `pcs.guide.open` before the page loads).
@@ -374,6 +389,8 @@ The other smoke tests run with the guide closed (they set `pcs.guide.open` befor
 The examples are made by tools: `tools/make-mb-examples.py` writes the workbooks' formulas and `gridcraft-cli` calculates and saves them (see the script's header), `tools/make-mb-buffer-example.mjs` adds the solution row to make `MB_example_buffer.xlsx`; `tools/make-downstream-examples.py` writes the downstream material file and MB (LibreOffice or GridCraft calculates it) and `tools/make-downstream-project.mjs` draws `example-downstream.pcs.json`, then `tools/make-operations-example.mjs` writes `operations-downstream.xlsx` and `tools/add-operations-example.mjs` tags four PROA shapes and imports it; `tools/make-example-project.mjs` draws `example-process.pcs.json` in the app.
 
 Pushing to `main` runs `.github/workflows/pages.yml`: type check, tests, then a build that includes the official GridCraft web build (v0.13.0), unmodified, under `/gridcraft/`, so the app and GridCraft share one origin, and the deploy to GitHub Pages.
+
+**Releases** — the version is `package.json`'s (shown as N5.1 for 5.1.0 in the Guide panel and on Start here). Pushing a tag `v<version>` (e.g. `git tag v5.1.0 && git push origin v5.1.0`) runs `.github/workflows/release.yml`: the same tests and build, then `tools/make-pc-zip.sh` packs the repository files and the built app into `pcs-platform-v<version>.zip` (folder `pcs-app`, `start-windows.cmd` with Windows line endings) and publishes it as a GitHub release with `.github/release-notes.md`.
 
 GridCraft runs in an iframe in its host mode (`gridcraft/index.html?host=parent&chrome=nofiletab`): the app sends the workbook (`gridcraft:open`) when GridCraft is ready, and stores what GridCraft saves (`gridcraft:save`); see `src/mb/gridcraft.ts`.
 
@@ -393,6 +410,7 @@ GridCraft runs in an iframe in its host mode (`gridcraft/index.html?host=parent&
 | `src/pfd/` | PFD logic: PowerPoint export (`pptx.ts`: drawing → shapes, stream tables, deck with PptxGenJS), Stream ID, UO and connector sync over the process map and every drawing (`sync.ts`, pure and unit tested), project file v1 conversion (`migrate.ts`), app-drawn shapes (`shapes.ts`), built-in symbols (`symbols.ts`) and the user's own (`customSymbols.ts`), tables, placement, Excalidraw helpers, side panel |
 | `src/views/` | Screens: PFD board, Operations, Mass Balance (and the GridCraft overlay), BOM, materials |
 | `test/` | Unit tests; `fixtures/xlsx` holds workbooks saved by GridCraft and LibreOffice in N0, `fixtures/example-v1.pcs.json` the example project in the old format |
+| `src/examples.ts` | The examples the app offers on **Start here**; `tools/copy-examples.mjs` copies them from `examples/` into the build (`public/examples/`, not committed) |
 | `examples/` | Files to try the app with: an upstream example project, its MB workbook (a v2, one with errors, and `MB_example_buffer.xlsx` with a solution made in-house), a material list to import; the downstream example (`example-downstream.pcs.json`, `MB_downstream.xlsx`, `downstream-materials.xlsx`, `operations-downstream.xlsx`); and `symbols/` (pictures and an Excalidraw library to upload as symbols) |
 | `start-windows.cmd` | Double-click launcher for Windows: serves the built app (`dist/`) with `tools/serve.mjs` and opens the browser; builds it once when `dist/` is missing |
 | `tools/` | GridCraft and font fetching, preview page, browser tests (`smoke*.mjs`), example generators |
