@@ -57,7 +57,7 @@ export type Op =
   | { kind: "shape"; shape: "rect" | "roundRect" | "ellipse" | "diamond"; x: number; y: number; w: number; h: number; rotate: number; line?: LineStyle; fill?: { color: string; transparency: number }; radius?: number }
   | { kind: "path"; x: number; y: number; w: number; h: number; rotate: number; points: { x: number; y: number }[]; closed: boolean; line?: LineStyle; fill?: { color: string; transparency: number }; begin: Arrowhead; end: Arrowhead }
   | { kind: "text"; x: number; y: number; w: number; h: number; rotate: number; text: string; fontSize: number; fontFace: string; color: string; align: "left" | "center" | "right"; valign: "top" | "middle" | "bottom"; lineSpacing: number; fill?: string }
-  | { kind: "image"; x: number; y: number; w: number; h: number; rotate: number; data: string };
+  | { kind: "image"; x: number; y: number; w: number; h: number; rotate: number; data: string; px: { w: number; h: number } };
 
 /** Excalidraw font family id → a font every PowerPoint has. */
 const FONTS: Record<number, string> = { 1: "Segoe Print", 2: "Arial", 3: "Consolas", 5: "Segoe Print", 6: "Arial", 7: "Arial Black", 8: "Comic Sans MS", 9: "Arial" };
@@ -203,7 +203,7 @@ export function drawingOps(elements: readonly unknown[], files: Record<string, u
       }
       case "image": {
         const f = e.fileId ? (files[e.fileId] as { dataURL?: string } | undefined) : undefined;
-        if (f?.dataURL) ops.push({ kind: "image", x: X(e.x), y: Y(e.y), w: e.width * s, h: e.height * s, rotate: deg(e), data: f.dataURL });
+        if (f?.dataURL) ops.push({ kind: "image", x: X(e.x), y: Y(e.y), w: e.width * s, h: e.height * s, rotate: deg(e), data: f.dataURL, px: { w: e.width, h: e.height } });
         break;
       }
       default:
@@ -280,8 +280,68 @@ export interface DeckOptions {
   /** Drawing elements and files per scope (the one on screen may be newer than the project). */
   sheet: (scope: string) => { elements: readonly unknown[]; files: Record<string, unknown> };
   onProgress?: (done: number, total: number) => void;
+  /** A picture that could not be read was left out (the rest of the deck is made): where it was. */
+  onSkip?: (where: string) => void;
   /** "blob" in the browser, "nodebuffer" in tests. */
   output?: "blob" | "nodebuffer";
+}
+
+// ---- pictures for PptxGenJS ------------------------------------------------------------------------------------------
+
+const toBase64 = (bytes: Uint8Array) => {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+};
+const fromBase64 = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+
+/**
+ * A drawing's picture (a data URL) as PptxGenJS takes it, or null when it cannot be read.
+ * - Most pictures: "image/png;base64,…" (PptxGenJS wants the header without "data:").
+ * - SVG (the stream tables on a drawing, uploaded SVG symbols): PptxGenJS draws it into an <img> to make the PNG copy
+ *   PowerPoint also needs, using the text it was given as the image address. Without "data:" the browser takes it
+ *   for a file path, the request fails (404) and so did the whole export. An SVG therefore keeps "data:", is base64
+ *   (also when it came as plain text), and gets a width and height (the picture's size on the drawing) when it has
+ *   none, since an <img> of an SVG without a size has nothing to draw.
+ */
+export function pptxImageData(dataURL: string, width: number, height: number): string | null {
+  const m = /^data:([^;,]+)((?:;[^,]*)?),([\s\S]*)$/.exec(dataURL.trim());
+  if (!m) return null;
+  const mime = m[1].trim().toLowerCase();
+  const isBase64 = /;base64/i.test(m[2]);
+  const payload = isBase64 ? m[3].replace(/\s+/g, "") : m[3];
+  let bytes: Uint8Array;
+  try { bytes = isBase64 ? fromBase64(payload) : new TextEncoder().encode(decodeURIComponent(payload)); } catch { return null; }
+  if (!bytes.length) return null;
+  if (mime !== "image/svg+xml") return `${mime};base64,${isBase64 ? payload : toBase64(bytes)}`;
+  const svg = withSvgSize(new TextDecoder().decode(bytes), width, height);
+  return svg === null ? null : `data:image/svg+xml;base64,${toBase64(new TextEncoder().encode(svg))}`;
+}
+
+/** The SVG with a width and height in pixels on its root element: kept when it has them, else `width` × `height`. */
+export function withSvgSize(svg: string, width: number, height: number): string | null {
+  const open = /<svg\b[^>]*>/i.exec(svg);
+  if (!open) return null;
+  const tag = open[0];
+  const attr = (k: string) => new RegExp(`\\s${k}\\s*=\\s*(["'])([^"']*)\\1`, "i").exec(tag)?.[2];
+  const absolute = (v?: string) => v !== undefined && /^\s*\d+(\.\d+)?\s*(px)?\s*$/i.test(v);
+  if (absolute(attr("width")) && absolute(attr("height"))) return svg;
+  const w = Math.max(1, Math.round(width)), h = Math.max(1, Math.round(height));
+  const fixed = tag.replace(/\s(width|height)\s*=\s*(["'])[^"']*\2/gi, "").replace(/^<svg\b/i, `<svg width="${w}" height="${h}"`);
+  return svg.slice(0, open.index) + fixed + svg.slice(open.index + tag.length);
+}
+
+/** In the browser: the data only when an <img> can show it (PptxGenJS fails the whole deck otherwise). */
+async function placeable(data: string | null): Promise<string | null> {
+  if (!data || !data.startsWith("data:image/svg+xml") || typeof Image === "undefined") return data;
+  return new Promise((resolve) => {
+    const img = new Image();
+    const done = (ok: boolean) => { clearTimeout(timer); resolve(ok ? data : null); };
+    const timer = setTimeout(() => done(false), 8000);
+    img.onload = () => done(img.width + img.height > 0);
+    img.onerror = () => done(false);
+    img.src = data;
+  });
 }
 
 const INK = "1F3A5F";
@@ -316,7 +376,9 @@ export async function buildPfdDeck(p: Project, opts: DeckOptions): Promise<Blob 
     if (opts.mode === "pictures" && opts.picture) {
       const pic = await opts.picture(scope);
       const { s, ox, oy } = fitBox(pic.width, pic.height);
-      slide.addImage({ data: pic.dataURL.replace(/^data:/, ""), x: ox, y: oy, w: pic.width * s, h: pic.height * s });
+      const data = await placeable(pptxImageData(pic.dataURL, pic.width, pic.height));
+      if (data) slide.addImage({ data, x: ox, y: oy, w: pic.width * s, h: pic.height * s });
+      else opts.onSkip?.(titleOf(scope));
     } else {
       const { elements, files } = opts.sheet(scope);
       for (const op of drawingOps(elements, files)) {
@@ -343,7 +405,10 @@ export async function buildPfdDeck(p: Project, opts: DeckOptions): Promise<Blob 
             ...(op.fill ? { fill: { color: op.fill } } : {}),
           });
         } else {
-          slide.addImage({ data: op.data.replace(/^data:/, ""), x: op.x, y: op.y, w: op.w, h: op.h, rotate: op.rotate || undefined });
+          // One unreadable picture leaves only itself out, not the whole deck.
+          const data = await placeable(pptxImageData(op.data, op.px.w, op.px.h));
+          if (data) slide.addImage({ data, x: op.x, y: op.y, w: op.w, h: op.h, rotate: op.rotate || undefined });
+          else opts.onSkip?.(titleOf(scope));
         }
       }
     }

@@ -84,3 +84,61 @@ describe("the downstream example as a deck", () => {
     expect(s4).toContain("14,250");
   }, 30000);
 });
+
+describe("pictures for PowerPoint (N5.1.1: SVG stream tables on a drawing made the export fail)", () => {
+  const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
+  const svgOf = (data: string) => Buffer.from(data.replace(/^data:image\/svg\+xml;base64,/, ""), "base64").toString("utf8");
+
+  it("a PNG goes as before: the header without data:", async () => {
+    const { pptxImageData } = await import("../src/pfd/pptx");
+    expect(pptxImageData("data:image/png;base64,iVBORw0KGgo=", 10, 10)).toBe("image/png;base64,iVBORw0KGgo=");
+  });
+
+  it("an SVG keeps data: (PptxGenJS loads it as the image address) and its own size", async () => {
+    const { pptxImageData } = await import("../src/pfd/pptx");
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="336" height="121" viewBox="0 0 336 121"><text>ST-10L-001</text></svg>';
+    const out = pptxImageData(`data:image/svg+xml;base64,${b64(svg)}`, 500, 200)!;
+    expect(out.startsWith("data:image/svg+xml;base64,")).toBe(true);
+    expect(svgOf(out)).toBe(svg);
+  });
+
+  it("an SVG without a size (or a size in %) gets the picture's size on the drawing", async () => {
+    const { pptxImageData } = await import("../src/pfd/pptx");
+    const noSize = svgOf(pptxImageData(`data:image/svg+xml;base64,${b64('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 20"><rect/></svg>')}`, 160.4, 80)!);
+    expect(noSize).toBe('<svg width="160" height="80" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 20"><rect/></svg>');
+    const percent = svgOf(pptxImageData(`data:image/svg+xml;base64,${b64('<?xml version="1.0"?><svg width="100%" height="100%" viewBox="0 0 4 2"/>')}`, 40, 20)!);
+    expect(percent).toBe('<?xml version="1.0"?><svg width="40" height="20" viewBox="0 0 4 2"/>');
+  });
+
+  it("an SVG written as plain text becomes base64; Korean text survives", async () => {
+    const { pptxImageData } = await import("../src/pfd/pptx");
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><text>완충액 ±5 °C</text></svg>';
+    const out = pptxImageData(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, 10, 10)!;
+    expect(out.startsWith("data:image/svg+xml;base64,")).toBe(true);
+    expect(svgOf(out)).toBe(svg);
+  });
+
+  it("data that is not a picture is left out (null), not passed on", async () => {
+    const { pptxImageData } = await import("../src/pfd/pptx");
+    expect(pptxImageData("image/png;base64,AAAA", 1, 1)).toBeNull();
+    expect(pptxImageData("data:image/svg+xml;base64,", 1, 1)).toBeNull();
+    expect(pptxImageData(`data:image/svg+xml;base64,${b64("<html>not svg</html>")}`, 1, 1)).toBeNull();
+    expect(pptxImageData("data:image/png;base64,%%%", 1, 1)).toBeNull();
+  });
+
+  it("the small example (a stream table on its process map) makes a deck with the table as SVG", async () => {
+    const { project: p } = parseProject(readFileSync(join(__dirname, "../examples/example-process.pcs.json"), "utf8"));
+    const skipped: string[] = [];
+    const out = await buildPfdDeck(p, {
+      slides: ["map", ...p.uos.map((u) => u.id)], mode: "shapes", streamTables: true, output: "nodebuffer",
+      sheet: (k) => (k === "map" ? p.pfd.map : p.pfd.sheets[k]), onSkip: (w) => skipped.push(w),
+    });
+    const zip = await JSZip.loadAsync(out as Uint8Array);
+    const svgs = Object.keys(zip.files).filter((f) => /^ppt\/media\/.*\.svg$/.test(f));
+    expect(skipped).toEqual([]);
+    expect(svgs.length).toBe(1);
+    const table = await zip.file(svgs[0])!.async("string");
+    expect(table).toMatch(/^<svg xmlns="http:\/\/www.w3.org\/2000\/svg" width="\d+" height="\d+"/);
+    expect(table).toContain("ST-10L-");
+  });
+});

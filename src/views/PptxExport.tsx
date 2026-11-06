@@ -37,6 +37,7 @@ export function PptxExportDialog(props: {
 
   const run = async () => {
     setBusy("Preparing…");
+    const skipped: string[] = [];
     try {
       const out = await buildPfdDeck(project, {
         slides, mode, streamTables: tables, sheet: props.sheet,
@@ -55,9 +56,11 @@ export function PptxExportDialog(props: {
           return { dataURL: await blobToDataUrl(blob), ...size };
         },
         onProgress: (done, total) => setBusy(`Slide ${done} of ${total}…`),
+        onSkip: (where) => skipped.push(where),
       });
       downloadBlob(out as Blob, `${project.meta.name} PFD.pptx`);
-      props.toast(`Exported ${count} slide(s) to PowerPoint`);
+      const places = [...new Set(skipped)];
+      props.toast(`Exported ${count} slide(s) to PowerPoint${skipped.length ? ` · ${skipped.length} picture(s) could not be read and were left out (${places.join(", ")})` : ""}`);
       props.onClose();
     } catch (e) {
       props.toast(`Could not export: ${(e as Error).message}`);
