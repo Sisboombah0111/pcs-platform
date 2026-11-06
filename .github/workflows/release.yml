@@ -1,37 +1,62 @@
 name: Release (PC version zip)
 
-# A version tag (v5.1.0 …) publishes a GitHub release with the PC version: the built app and start-windows.cmd
-# in one zip, for computers where the site cannot be opened. The tag must match package.json's version.
+# When main has a version (package.json) that is not released yet, publish a GitHub release v<version> with the PC
+# version: the built app and start-windows.cmd in one zip, for computers where the site cannot be opened. GitHub
+# creates the tag. Every other push to main finds the release already there and stops after the first step.
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-      - name: The tag matches package.json
-        run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npx vitest run
-      - name: GridCraft (official web build)
-        run: node tools/fetch-gridcraft.mjs
-      - run: npm run build
-      - name: The zip
-        run: bash tools/make-pc-zip.sh "pcs-platform-$GITHUB_REF_NAME.zip"
-      - name: Publish the release
+      - name: Is this version released yet?
+        id: v
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          label="N$(node -p "const [a,b,c]=require('./package.json').version.split('.');a+'.'+b+(c!=='0'?'.'+c:'')")"
-          gh release create "$GITHUB_REF_NAME" "pcs-platform-$GITHUB_REF_NAME.zip" \
-            --title "PCS Platform $label (PC version)" --notes-file .github/release-notes.md
+          ver="$(node -p "require('./package.json').version")"
+          echo "tag=v$ver" >> "$GITHUB_OUTPUT"
+          echo "label=N$(node -p "const [a,b,c]='$ver'.split('.');a+'.'+b+(c!=='0'?'.'+c:'')")" >> "$GITHUB_OUTPUT"
+          if gh release view "v$ver" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "new=false" >> "$GITHUB_OUTPUT"; echo "v$ver is already released: nothing to do."
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"; echo "v$ver is new: building the PC zip."
+          fi
+      - uses: actions/setup-node@v6
+        if: steps.v.outputs.new == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - if: steps.v.outputs.new == 'true'
+        run: npm ci
+      - if: steps.v.outputs.new == 'true'
+        run: npm run typecheck
+      - if: steps.v.outputs.new == 'true'
+        run: npx vitest run
+      - name: GridCraft (official web build)
+        if: steps.v.outputs.new == 'true'
+        run: node tools/fetch-gridcraft.mjs
+      - if: steps.v.outputs.new == 'true'
+        run: npm run build
+      - name: The zip
+        if: steps.v.outputs.new == 'true'
+        run: bash tools/make-pc-zip.sh "pcs-platform-${{ steps.v.outputs.tag }}.zip"
+      - name: Publish the release (GitHub creates the tag)
+        if: steps.v.outputs.new == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.v.outputs.tag }}" "pcs-platform-${{ steps.v.outputs.tag }}.zip" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "PCS Platform ${{ steps.v.outputs.label }} (PC version)" --notes-file .github/release-notes.md

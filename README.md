@@ -390,7 +390,7 @@ The examples are made by tools: `tools/make-mb-examples.py` writes the workbooks
 
 Pushing to `main` runs `.github/workflows/pages.yml`: type check, tests, then a build that includes the official GridCraft web build (v0.13.0), unmodified, under `/gridcraft/`, so the app and GridCraft share one origin, and the deploy to GitHub Pages.
 
-**Releases** — the version is `package.json`'s (shown as N5.1 for 5.1.0 in the Guide panel and on Start here). Pushing a tag `v<version>` (e.g. `git tag v5.1.0 && git push origin v5.1.0`) runs `.github/workflows/release.yml`: the same tests and build, then `tools/make-pc-zip.sh` packs the repository files and the built app into `pcs-platform-v<version>.zip` (folder `pcs-app`, `start-windows.cmd` with Windows line endings) and publishes it as a GitHub release with `.github/release-notes.md`.
+**Releases** — the version is `package.json`'s (shown as N5.1 for 5.1.0 in the Guide panel and on Start here). Every push to `main` also runs `.github/workflows/release.yml`: when there is no release `v<version>` yet, it runs the same tests and build, `tools/make-pc-zip.sh` packs the repository files and the built app into `pcs-platform-v<version>.zip` (folder `pcs-app`, `start-windows.cmd` with Windows line endings), and it publishes the release with `.github/release-notes.md` (GitHub creates the tag). So a new PC zip = raise the version in `package.json` and push.
 
 GridCraft runs in an iframe in its host mode (`gridcraft/index.html?host=parent&chrome=nofiletab`): the app sends the workbook (`gridcraft:open`) when GridCraft is ready, and stores what GridCraft saves (`gridcraft:save`); see `src/mb/gridcraft.ts`.
 
