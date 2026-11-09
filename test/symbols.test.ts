@@ -4,7 +4,7 @@ import {
   MY_SYMBOLS, cleanSymbols, customPreviewUrl, fromExcalidrawLib, imageSymbol, insertSize, mergeSymbols, nameFromFile,
   normalizeShapes, shapesSymbol, symbolSetJson, symbolsFromJson,
 } from "../src/pfd/customSymbols";
-import { CATEGORIES, SYMBOLS, partsBounds, symbolPreviewSvg } from "../src/pfd/symbols";
+import { CATEGORIES, SYMBOLS, fitLine, partsBounds, symbolPreviewSvg } from "../src/pfd/symbols";
 import { createProject, parseProject, serializeProject } from "../src/model/project";
 
 const PNG = "data:image/png;base64,iVBORw0KGgo=";
@@ -107,5 +107,28 @@ describe("symbols the user adds", () => {
     expect(insertSize(10, 10)).toEqual({ width: 32, height: 32 });
     expect(insertSize(60, 40)).toEqual({ width: 60, height: 40 });
     expect(nameFromFile("sterile-filter_0.2um.svg")).toBe("sterile filter 0.2um");
+  });
+});
+
+// N5.5.1: a symbol's lines are measured from their points (Excalidraw sizes a line skeleton 100 × 0, and a resize
+// scales the points to that box, so the lines inside a symbol fell flat when it was made bigger).
+describe("fitLine", () => {
+  const base = { x: 10, y: 20, width: 100, height: 0 };
+  it("measures a line from its points (the filter's diagonal)", () => {
+    expect(fitLine({ ...base, points: [[0, 0], [44, -72]] })).toEqual({ x: 10, y: 20, width: 44, height: 72, points: [[0, 0], [44, -72]] });
+  });
+  it("moves the first point to (0, 0), keeping the line where it was", () => {
+    const f = fitLine({ ...base, points: [[16, 0], [16, 30], [0, 30]] });
+    expect(f).toEqual({ x: 26, y: 20, width: 16, height: 30, points: [[0, 0], [0, 30], [-16, 30]] });
+  });
+  it("a vertical line is 0 wide (not the 100 Excalidraw gives a line skeleton)", () => {
+    expect(fitLine({ ...base, points: [[0, 0], [0, 40]] })).toMatchObject({ width: 0, height: 40 });
+  });
+  it("every line of every built-in symbol has a size to scale (no zero box for a line that has an extent)", () => {
+    for (const d of SYMBOLS) for (const p of d.parts) if (p.type === "line") {
+      const f = fitLine({ x: p.x, y: p.y, width: 100, height: 0, points: p.pts });
+      const xs = p.pts.map((q) => q[0]), ys = p.pts.map((q) => q[1]);
+      expect([f.width, f.height], `${d.id}`).toEqual([Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)]);
+    }
   });
 });

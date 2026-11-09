@@ -323,6 +323,20 @@ export function partsBounds(parts: readonly Part[]) {
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
+/**
+ * A line as the editor keeps it: its first point at (0, 0), with x and y moved there, and its width and height the
+ * extent of its points. Excalidraw builds a line skeleton 100 wide and 0 high whatever its points (an arrow is sized
+ * from its own), and resizing scales the points to that box: the lines inside a symbol fell flat and ran off to the
+ * right when it was made bigger, until a reload measured them (N5.5.1).
+ */
+export function fitLine<T extends { x: number; y: number; width: number; height: number; points: readonly (readonly [number, number])[] }>(e: T): T {
+  if (!e.points.length) return e;
+  const [x0, y0] = e.points[0];
+  const points = e.points.map(([px, py]) => [px - x0, py - y0] as [number, number]);
+  const xs = points.map((q) => q[0]), ys = points.map((q) => q[1]);
+  return { ...e, x: e.x + x0, y: e.y + y0, points, width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) };
+}
+
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 /** Small SVG preview of a symbol for the palette (no name label). */

@@ -10,7 +10,7 @@ import type { CustomSymbol } from "../model/types";
 import { insertSize } from "./customSymbols";
 import type { BoardElement } from "./sync";
 import { placeText } from "./shapes";
-import { partsBounds, type SymbolDef } from "./symbols";
+import { fitLine, partsBounds, type SymbolDef } from "./symbols";
 
 export const LABEL_COLOR = "#0b6585";
 export const DRAW_FONT = FONT_FAMILY["Liberation Sans"];
@@ -44,7 +44,9 @@ export function symbolElements(def: Pick<SymbolDef, "id" | "parts" | "label">, x
       roundness: p.round ? { type: ROUNDNESS.ADAPTIVE_RADIUS } : null,
     } as Skeleton;
   });
-  const els = convertToExcalidrawElements(skeletons, { regenerateIds: true });
+  // Lines measured from their points, as a reload would (see fitLine): otherwise a resize flattens them.
+  const els = convertToExcalidrawElements(skeletons, { regenerateIds: true })
+    .map((e) => (e.type === "line" ? fitLine(e as ExcalidrawElement & { points: [number, number][] }) as ExcalidrawElement : e));
   const b = partsBounds(def.parts);
   const all = def.label ? [...els, labelUnder(def.label, { ...b, x: x + b.x, y: y + b.y })] : els;
   const groupId = newId("grp");

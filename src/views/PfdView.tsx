@@ -14,7 +14,7 @@ import { actionText, dropUnitOperations, equipmentShapes, equipmentUse, tagKey, 
 import { DRAW_FONT, customSymbolElements, isInteracting, measureTexts, normalizeScene, relabel, symbolElements, symbolLabel, viewCenter } from "../pfd/excalidraw";
 import { IMAGE_TYPES, MAX_IMAGE_BYTES, imageSymbol, mergeSymbols, nameFromFile, shapesSymbol, symbolSetJson, symbolsFromJson } from "../pfd/customSymbols";
 import { downloadText, pickFiles, readDataUrl } from "../storage/files";
-import { boundsOf, freeSpot, type Box } from "../pfd/placement";
+import { boundsOf, extentOf, freeSpot, type Box } from "../pfd/placement";
 import { PfdPanel, type EquipmentInfo, type PanelActions, type Selection } from "../pfd/PfdPanel";
 import { StepOverlay } from "../pfd/StepOverlay";
 import { usePanelWidth } from "../ui/resize";
@@ -423,7 +423,7 @@ export function PfdView(props: {
   };
 
   const occupiedBoxes = (api: Api): Box[] =>
-    api.getSceneElements().filter((e) => e.type !== "frame" && e.type !== "magicframe").map((e) => ({ x: e.x, y: e.y, width: e.width, height: e.height }));
+    api.getSceneElements().filter((e) => e.type !== "frame" && e.type !== "magicframe").map((e) => extentOf(e as unknown as Box & { points?: [number, number][] }));
   const frameAt = (api: Api, x: number, y: number) =>
     asBoard(api.getSceneElements()).find((e) => e.type === "frame" && x >= e.x && x <= e.x + e.width && y >= e.y && y <= e.y + e.height);
 

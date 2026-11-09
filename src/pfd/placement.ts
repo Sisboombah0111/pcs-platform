@@ -37,9 +37,18 @@ export function freeSpot(occupied: Box[], x: number, y: number, w: number, h: nu
   return (within ? scan(within, true, 10) : null) ?? scan(near, false, 20) ?? { x: Math.round(x), y: Math.round(y) };
 }
 
+/** Where an element really is: a line or arrow from its points (they may run left of or above x, y). */
+export function extentOf(e: Box & { points?: readonly (readonly [number, number])[] }): Box {
+  if (!e.points?.length) return { x: e.x, y: e.y, width: e.width, height: e.height };
+  const xs = e.points.map((p) => p[0]), ys = e.points.map((p) => p[1]);
+  const minX = Math.min(...xs), minY = Math.min(...ys);
+  return { x: e.x + minX, y: e.y + minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY };
+}
+
 /** Bounding box of a set of elements, or null when empty. */
-export function boundsOf(els: Box[]): Box | null {
-  if (!els.length) return null;
+export function boundsOf(elements: (Box & { points?: readonly (readonly [number, number])[] })[]): Box | null {
+  if (!elements.length) return null;
+  const els = elements.map(extentOf);
   const x0 = Math.min(...els.map((e) => e.x)), y0 = Math.min(...els.map((e) => e.y));
   const x1 = Math.max(...els.map((e) => e.x + e.width)), y1 = Math.max(...els.map((e) => e.y + e.height));
   return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };

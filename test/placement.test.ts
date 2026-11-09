@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { boundsOf, freeSpot } from "../src/pfd/placement";
+import { boundsOf, extentOf, freeSpot } from "../src/pfd/placement";
 
 describe("freeSpot", () => {
   it("keeps the spot when it is free", () => {
@@ -36,5 +36,10 @@ describe("boundsOf", () => {
   it("covers all boxes", () => {
     expect(boundsOf([{ x: 0, y: 10, width: 5, height: 5 }, { x: -5, y: 0, width: 5, height: 40 }])).toEqual({ x: -5, y: 0, width: 10, height: 40 });
     expect(boundsOf([])).toBeNull();
+  });
+  it("a line counts where its points are (the filter's diagonal runs up from x, y)", () => {
+    const diag = { x: 0, y: 72, width: 44, height: 72, points: [[0, 0], [44, -72]] as [number, number][] };
+    expect(extentOf(diag)).toEqual({ x: 0, y: 0, width: 44, height: 72 });
+    expect(boundsOf([{ x: 0, y: 0, width: 44, height: 72 }, diag])).toEqual({ x: 0, y: 0, width: 44, height: 72 });
   });
 });
