@@ -25,6 +25,7 @@ await page.waitForFunction(() => window.__pcsPfd?.api);
 // New project with the sample materials.
 await page.getByRole("button", { name: "New", exact: true }).click();
 await page.locator(".dialog input.search").fill("Example process");
+await page.getByRole("checkbox", { name: /sample materials/ }).check(); // N5.5: off by default
 await page.getByRole("button", { name: "Create", exact: true }).click();
 const discard = page.getByRole("button", { name: "Start new without saving" });
 if (await discard.isVisible({ timeout: 1500 }).catch(() => false)) await discard.click();

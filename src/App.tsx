@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ProjectFileError, createProject, parseProject, projectFileName, serializeProject, touch, withoutViewPositions } from "./model/project";
-import { exampleUrl, type Example } from "./examples";
+import { EXAMPLE_PROJECTS, exampleUrl, isUntouchedExample, type Example } from "./examples";
 import { StartCard } from "./views/StartCard";
 import { SAMPLE_COUNT, sampleMaterials } from "./model/sampleData";
 import type { Material, PfdBoard, Project } from "./model/types";
@@ -25,6 +25,11 @@ import { useCellSelection } from "./ui/cellSelection";
 
 type Tab = "pfd" | "operations" | "mb" | "bom" | "materials";
 type SaveState = { kind: "idle" } | { kind: "saving" } | { kind: "saved"; at: string } | { kind: "error"; message: string };
+/**
+ * An example open as a view (N5.5): it is not autosaved, and your own project waits here as it was (with its undo
+ * history) until Close example. A reload also brings it back, since the autosave still holds it.
+ */
+interface ExampleView { title: string; back: Project; backFileSaved?: string; backSave: SaveState; backHistory: History; openedAt: string }
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "pfd", label: "PFD" },
@@ -34,6 +39,8 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "materials", label: "Materials" },
 ];
 
+/** Set on the first start of N5.5 in a browser (the one-time check for an untouched example in the autosave). */
+const EXAMPLE_CHECK_KEY = "pcs.n55.exampleCheck";
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 const ZOOMS = [70, 80, 90, 100, 110, 125, 150, 175];
 /** A sum or average in the status bar: thousands separated, at most 4 decimals (as Excel shows them). */
@@ -70,12 +77,14 @@ export default function App() {
   const setZoom = (z: number) => { setZoomState(z); try { localStorage.setItem("pcs.zoom", String(z)); } catch { /* storage off */ } };
   const selStats = useCellSelection(screenEl, `${tab}:${project?.id ?? ""}`, (r, c) => toast(`Copied ${r} × ${c} cell${r * c > 1 ? "s" : ""}: paste into Excel`));
 
-  const latest = useRef<{ project: Project | null; fileSavedVersion?: string }>({ project: null });
-  latest.current = { project, fileSavedVersion };
+  const [example, setExample] = useState<ExampleView | null>(null);
+  const latest = useRef<{ project: Project | null; fileSavedVersion?: string; example?: boolean }>({ project: null });
+  latest.current = { project, fileSavedVersion, example: !!example };
 
   const autosave = useMemo(() => debouncer(() => {
     const { project: p, fileSavedVersion: v } = latest.current;
-    if (!p) return;
+    // An example on view is never autosaved: the autosave keeps your own project.
+    if (!p || latest.current.example) return;
     setSaveState({ kind: "saving" });
     saveCurrent(p, v).then(
       (at) => setSaveState({ kind: "saved", at }),
@@ -89,7 +98,15 @@ export default function App() {
     loadCurrent().then(
       (rec) => {
         if (!alive) return;
-        if (rec) {
+        // Once, on the first start of N5.5 in this browser: an example autosaved as it came (before N5.5 an
+        // opened example became the project) gives way to an empty project; the example opens again when asked.
+        // After that an example opened on purpose (Open, a file) stays, changed or not.
+        let firstStart = false;
+        try { firstStart = localStorage.getItem(EXAMPLE_CHECK_KEY) === null; localStorage.setItem(EXAMPLE_CHECK_KEY, "1"); } catch { /* storage off: leave it */ }
+        if (rec && firstStart && isUntouchedExample(rec.project)) {
+          setProject(createProject());
+          toast("The example now opens only when you ask: Start here › Open the example (view only)");
+        } else if (rec) {
           setProject(rec.project);
           setFileSavedVersion(rec.fileSavedVersion);
           setSaveState({ kind: "saved", at: rec.savedAt });
@@ -108,8 +125,8 @@ export default function App() {
   }, [toast]);
 
   useEffect(() => {
-    if (project) autosave.schedule();
-  }, [project, fileSavedVersion, autosave]);
+    if (project && !example) autosave.schedule();
+  }, [project, fileSavedVersion, example, autosave]);
 
   // When the page is hidden or closed, write the very latest board straight away.
   const flushBoard = useRef<(() => PfdBoard | null) | null>(null);
@@ -117,7 +134,7 @@ export default function App() {
     holdConnection();
     const flush = () => {
       const p = latest.current.project;
-      if (!p) return;
+      if (!p || latest.current.example) return;
       const board = flushBoard.current?.();
       const next = board ? { ...p, pfd: board } : p;
       latest.current = { ...latest.current, project: next };
@@ -137,6 +154,8 @@ export default function App() {
   /** Set while an undo or redo is applied: its log label. */
   const applying = useRef<string | null>(null);
   const [logOpen, setLogOpen] = useState(false);
+  /** The undo history to use with the next project set (an example opened or closed, a file opened). */
+  const swapHistory = useRef<History | null>(null);
 
   /** Change the project; `label` names the change for undo and the change log (null: not recorded). */
   const update = useCallback((fn: (p: Project) => Project, label: string | null = "Change") => {
@@ -151,6 +170,7 @@ export default function App() {
     const prev = prevProject.current;
     prevProject.current = project;
     if (!project) return;
+    if (swapHistory.current) { history.current = swapHistory.current; swapHistory.current = null; pending.current = null; applying.current = null; setHistoryTick((t) => t + 1); return; }
     if (!prev || prev.id !== project.id) { history.current = emptyHistory(); pending.current = null; applying.current = null; setHistoryTick((t) => t + 1); return; }
     const by = readUserName();
     const code = (id: string) => project.uos.find((u) => u.id === id)?.code ?? prev.uos.find((u) => u.id === id)?.code ?? "?";
@@ -252,12 +272,14 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey, true);
   }, [saveFile, applyHistory]);
 
-  const guardUnsaved = async (action: "open" | "new") => {
-    if (!unsavedToFile) return true;
+  const guardUnsaved = async (action: "open" | "new" | "keep") => {
+    // With an example on view, what Open or New replaces is your own project waiting behind it.
+    const own = example ? { p: example.back, v: example.backFileSaved } : { p: project, v: fileSavedVersion };
+    if (!own.p || own.p.meta.updatedAt === own.v) return true;
     return confirm({
       title: "Changes not saved to a file",
-      body: `This project has changes that are not in a project file yet. ${action === "open" ? "Opening a file" : "Starting a new project"} replaces the copy autosaved in this browser. Use "Save to file" first to keep them.`,
-      confirmLabel: action === "open" ? "Open without saving" : "Start new without saving",
+      body: `${example ? `Your project (${own.p.meta.name})` : "This project"} has changes that are not in a project file yet. ${action === "open" ? "Opening a file" : action === "keep" ? "Keeping the example" : "Starting a new project"} replaces the copy autosaved in this browser. Use "Save to file" first to keep them.`,
+      confirmLabel: action === "open" ? "Open without saving" : action === "keep" ? "Keep the example without saving" : "Start new without saving",
       danger: true,
     });
   };
@@ -269,29 +291,98 @@ export default function App() {
     openText(await file.text(), file.name);
   };
 
-  /** A project file's text, opened like Open does (from a file, or an example that comes with the app). */
-  const openText = (text: string, name: string) => {
+  /** A project file's text read, or null (and a message) when it is not one. */
+  const parseText = (text: string): { p: Project; notes: string[] } | null => {
     try {
       const { project: p, notes } = parseProject(text);
       // The zoom and scroll saved in the file were for the screen it was saved on: each drawing fits this one.
-      setProject(withoutViewPositions(p));
-      setFileSavedVersion(p.meta.updatedAt);
-      setTab("pfd");
-      toast(notes.length ? `Opened ${name} · ${notes.length} note(s): ${notes[0]}` : `Opened ${name}`);
+      return { p: withoutViewPositions(p), notes };
     } catch (e) {
       toast(e instanceof ProjectFileError ? e.message : `Could not open the file: ${(e as Error).message}`);
+      return null;
     }
   };
+  /** The project from now on (Open, New, Keep the example): a fresh drawing and undo history, autosaved. */
+  const becomeProject = (p: Project, fileSaved: string | undefined) => {
+    swapHistory.current = emptyHistory();
+    setExample(null);
+    setProject(p);
+    setFileSavedVersion(fileSaved);
+    setPfdEpoch((e) => e + 1);
+    setTab("pfd");
+  };
 
+  /** A project file opened like Open does. */
+  const openText = (text: string, name: string) => {
+    const r = parseText(text);
+    if (!r) return;
+    becomeProject(r.p, r.p.meta.updatedAt);
+    toast(r.notes.length ? `Opened ${name} · ${r.notes.length} note(s): ${r.notes[0]}` : `Opened ${name}`);
+  };
+
+  /** An example that comes with the app, opened as a view: your own project is kept (autosaved) behind it. */
   const openExample = async (ex: Example) => {
-    if (!(await guardUnsaved("open"))) return;
+    let text: string;
     try {
       const res = await fetch(exampleUrl(ex.file));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      openText(await res.text(), ex.file);
+      text = await res.text();
     } catch (e) {
       toast(`Could not load the example (${(e as Error).message}). It is also in the examples folder on GitHub.`);
+      return;
     }
+    const r = parseText(text);
+    const cur = latest.current.project;
+    if (!r || !cur) return;
+    let view: ExampleView;
+    if (example) view = { ...example, title: ex.title, openedAt: r.p.meta.updatedAt };
+    else {
+      // Your project as it is now, the drawing's last strokes included, written to the autosave straight away.
+      const board = flushBoard.current?.();
+      const back = board ? { ...cur, pfd: board } : cur;
+      if (!saveCurrentNow(back, fileSavedVersion)) void saveCurrent(back, fileSavedVersion).catch(() => { /* kept here until Close example */ });
+      view = { title: ex.title, back, backFileSaved: fileSavedVersion, backSave: saveState, backHistory: history.current, openedAt: r.p.meta.updatedAt };
+    }
+    swapHistory.current = emptyHistory();
+    setExample(view);
+    setProject(r.p);
+    setFileSavedVersion(r.p.meta.updatedAt);
+    setPfdEpoch((e) => e + 1);
+    setTab("pfd");
+    toast(`Opened the example as a view: not saved. Close example brings back ${view.back.meta.name}.`);
+  };
+
+  /** Back to your own project, as it was; the example and what was changed in it go. */
+  const closeExample = async () => {
+    if (!example) return;
+    const edited = latest.current.project?.meta.updatedAt !== example.openedAt;
+    if (edited && !(await confirm({
+      title: "Close the example?",
+      body: `What you changed in the example is not saved (Save to file keeps a copy). ${example.back.meta.name} comes back as it was.`,
+      confirmLabel: "Close example",
+    }))) return;
+    swapHistory.current = example.backHistory;
+    setProject(example.back);
+    setFileSavedVersion(example.backFileSaved);
+    setSaveState(example.backSave);
+    setExample(null);
+    setPfdEpoch((e) => e + 1);
+    toast(`Back to ${example.back.meta.name}`);
+  };
+
+  /** The example becomes your project (autosaved from now on), in place of the one behind it. */
+  const keepExample = async () => {
+    if (!example) return;
+    if (!(await guardUnsaved("keep"))) return;
+    if (example.back.meta.updatedAt === example.backFileSaved && !(await confirm({
+      title: "Keep the example as your project?",
+      body: `It takes the place of ${example.back.meta.name} in this browser's autosave (your project file, if you saved one, stays as it is).`,
+      confirmLabel: "Keep the example",
+    }))) return;
+    setExample(null);
+    // Marked as changed, so it is the user's project from now on (an untouched example is not restored).
+    setProject((p) => (p ? touch(p) : p));
+    toast("The example is your project now: autosaved in this browser");
   };
 
   const startNew = async (name: string, withSamples: boolean) => {
@@ -299,9 +390,7 @@ export default function App() {
     if (!(await guardUnsaved("new"))) return;
     const p = createProject(name.trim() || "New process");
     if (withSamples) p.materials = sampleMaterials();
-    setProject(p);
-    setFileSavedVersion(undefined);
-    setTab("pfd");
+    becomeProject(p, undefined);
   };
 
   // The PFD, Mass Balance, BOM and material list checked against each other on every change.
@@ -326,6 +415,7 @@ export default function App() {
   if (!project) return <div className="loading">Loading…</div>;
 
   const status = (() => {
+    if (example) return { dot: "warn", text: "Example · not saved", title: `A view of the example: changes are not autosaved. Close example brings back ${example.back.meta.name}.` };
     switch (saveState.kind) {
       case "saving": return { dot: "", text: "Saving…" };
       case "saved": return { dot: "ok", text: `Autosaved ${timeOf(saveState.at)}` };
@@ -401,11 +491,21 @@ export default function App() {
         </RibbonGroup>
       </div>
 
-      {import.meta.env.MODE === "singlefile" ? (
-        <div className="preview-banner">
-          Preview build. Downloads (Save to file, Excel export) may be blocked here, and autosave stays in this browser only. Everything works in the GitHub Pages deployment.
-        </div>
-      ) : <div />}
+      <div className="app-notices">
+        {import.meta.env.MODE === "singlefile" && (
+          <div className="preview-banner">
+            Preview build. Downloads (Save to file, Excel export) may be blocked here, and autosave stays in this browser only. Everything works in the GitHub Pages deployment.
+          </div>
+        )}
+        {example && (
+          <div className="example-bar" role="status" aria-label="Example">
+            <Icon name="samples" size={16} />
+            <span><b>Example: {example.title}</b> — a view only: changes are not saved, and your project ({example.back.meta.name}) is kept as it was.</span>
+            <button className="btn small primary" onClick={() => void closeExample()}>Close example</button>
+            <button className="btn small" onClick={() => void keepExample()} title="Work on in the example: it becomes your project, autosaved in this browser">Keep as my project…</button>
+          </div>
+        )}
+      </div>
       <RibbonContext.Provider value={{ el: ribbonEl, screen: tab }}>
       <div className="workspace">
       <main className="work">
@@ -456,7 +556,7 @@ export default function App() {
 
       <footer className="statusbar">
         <span className="sb-ready">{saveState.kind === "saving" ? "Saving…" : "Ready"}</span>
-        <span className="sb-where">{unsavedToFile ? "Autosaved in this browser · not saved to a file yet" : "Saved to a file"}</span>
+        <span className="sb-where">{example ? "Example: not saved · Close example brings back your project" : unsavedToFile ? "Autosaved in this browser · not saved to a file yet" : "Saved to a file"}</span>
         <span className="sb-stats" aria-live="polite">
           {selStats && selStats.count > 1 && (selStats.numbers > 0
             ? <><span>Average: {fmtStat(selStats.sum / selStats.numbers)}</span><span>Count: {selStats.count}</span><span>Sum: {fmtStat(selStats.sum)}</span></>
@@ -475,7 +575,7 @@ export default function App() {
 
       {linkOpen && <LinkDialog findings={findings} onClose={() => setLinkOpen(false)} goTo={goTo}
         showStream={(id) => { setLinkOpen(false); setTab("pfd"); setTimeout(() => pfdControl.current?.focusStream(id), 50); }} />}
-      {newDialog && <NewProjectDialog onCancel={() => setNewDialog(false)} onCreate={startNew} />}
+      {newDialog && <NewProjectDialog onCancel={() => setNewDialog(false)} onCreate={startNew} onExample={() => { setNewDialog(false); void openExample(EXAMPLE_PROJECTS[0]); }} />}
       {logOpen && <ChangesDialog project={project} onClose={() => setLogOpen(false)} onClear={() => update((p) => ({ ...p, changeLog: [] }), null)} confirm={confirm} />}
       {confirmEl}
       {toastEl}
@@ -483,9 +583,9 @@ export default function App() {
   );
 }
 
-function NewProjectDialog(props: { onCancel: () => void; onCreate: (name: string, withSamples: boolean) => void }) {
+function NewProjectDialog(props: { onCancel: () => void; onCreate: (name: string, withSamples: boolean) => void; onExample: () => void }) {
   const [name, setName] = useState("New process");
-  const [samples, setSamples] = useState(true);
+  const [samples, setSamples] = useState(false);
   return (
     <Dialog
       title="New project"
@@ -503,6 +603,9 @@ function NewProjectDialog(props: { onCancel: () => void; onCreate: (name: string
         <input type="checkbox" checked={samples} onChange={(e) => setSamples(e.target.checked)} />
         <span>Add {SAMPLE_COUNT} sample materials (made-up codes)</span>
       </label>
+      <p className="muted new-example">
+        Want to look around first? <button className="linkish" onClick={props.onExample}>Open the example (view only)</button>: the downstream mAb process, not saved; your project stays as it is.
+      </p>
     </Dialog>
   );
 }

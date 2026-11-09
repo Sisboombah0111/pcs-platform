@@ -4,6 +4,7 @@
 // Usage: LANG=C.UTF-8 node tools/smoke-n52.mjs <base-url> [screenshot-prefix]
 import { createRequire } from "node:module";
 import { execSync } from "node:child_process";
+import { resolve } from "node:path";
 
 const require = createRequire(import.meta.url);
 let playwright;
@@ -20,10 +21,16 @@ page.on("pageerror", (e) => errors.push(e.message));
 page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
 await page.goto(base);
 await page.waitForSelector(".excalidraw");
-await page.getByRole("button", { name: /^Open the example/ }).click();
-const d = page.getByRole("button", { name: "Open without saving" });
-if (await d.isVisible({ timeout: 1500 }).catch(() => false)) await d.click();
-await page.waitForTimeout(2000);
+// The example as a project file (N5.5: the Start here example is a view that a reload leaves; this test reloads).
+{
+  const [chooser] = await Promise.all([page.waitForEvent("filechooser"), (async () => {
+    await page.getByRole("button", { name: "Open", exact: true }).click();
+    const d = page.getByRole("button", { name: "Open without saving" });
+    if (await d.isVisible({ timeout: 1500 }).catch(() => false)) await d.click();
+  })()]);
+  await chooser.setFiles(resolve("examples/example-downstream.pcs.json"));
+  await page.waitForTimeout(2000);
+}
 const tab = async (re) => { await page.getByRole("tab", { name: re }).click(); await page.waitForTimeout(600); };
 const groups = () => page.locator(".ribbon .rgroup").evaluateAll((gs) => gs.map((g) => g.getAttribute("aria-label")));
 const chrome = () => page.locator(".titlebar").evaluate((e) => getComputedStyle(e).backgroundColor);
@@ -97,7 +104,8 @@ await page.evaluate(() => document.activeElement?.blur?.());
   const box = await ovIn("CHM-0003").locator("xpath=..").boundingBox();
   await page.mouse.click(box.x + 2, box.y + 2);
   await page.evaluate(() => document.activeElement?.blur?.());
-  await page.keyboard.type("12");
+  // At a typing speed (40 ms a key): two keys within a few ms of each other can lose the second (a known race).
+  await page.keyboard.type("12", { delay: 40 });
   const typed = await ovIn("CHM-0003").inputValue();
   await page.keyboard.press("Enter");
   await page.waitForTimeout(300);

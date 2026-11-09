@@ -153,6 +153,7 @@ export const SCREENS: Record<Screen, { title: Bilingual; items: Bilingual[] }> =
       b("Step view (ribbon, on a unit operation's drawing): pick a step; tagged valves show open (green) or closed (grey), ▶ = switched in that step, the step's streams in blue.", "Step view(리본, 단위공정 도면에서): 단계를 고르면 태그가 붙은 밸브가 열림(초록)·닫힘(회색)으로, ▶ = 그 단계에서 바뀐 것, 그 단계의 스트림은 파란색으로 보입니다."),
       b("Labels show ID / name / value; what the value line shows is set on Mass Balance › PFD labels show.", "라벨은 ID / 이름 / 값 3줄. 값 줄의 표시 방식은 Mass Balance › PFD labels show에서 정합니다."),
       b("Click the drawing once, then Ctrl+Z / Ctrl+Y to undo or redo.", "도면을 한 번 클릭한 뒤 Ctrl+Z / Ctrl+Y로 되돌리기·다시."),
+      b("Start here (an empty project): Open a project file…, Add a unit operation, or Open the example (view only). The example has a yellow bar and is not saved: Close example (or a reload) brings your project back as it was, Keep as my project… keeps the example. New offers it too.", "Start here(빈 프로젝트): Open a project file…, Add a unit operation, 또는 Open the example (view only). 예제는 노란 막대와 함께 열리고 저장되지 않습니다: Close example(또는 새로고침)로 내 프로젝트가 그대로 돌아오고, Keep as my project…를 누르면 예제를 내 프로젝트로 씁니다. New 창에서도 열 수 있습니다."),
     ],
   },
   operations: {

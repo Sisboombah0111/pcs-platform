@@ -66,6 +66,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .app { display: grid; grid-template-rows: auto auto auto auto minmax(0, 1fr) auto; height: 100%; }
 .preview-banner { background: var(--warn-soft); color: var(--warn); font-size: var(--fs-sm); padding: 6px 14px; border-bottom: 1px solid var(--line); }
+/* N5.5: an example on view (not saved), like Excel's yellow message bar for a protected file */
+.example-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: #fff4ce; color: var(--ink); border-bottom: 1px solid #f2d68a; padding: 5px 14px; font-size: var(--fs-sm); }
+.example-bar > svg { color: #8a6d00; flex: none; }
+.example-bar > span { flex: 1 1 320px; min-width: 0; }
+.new-example { margin: 4px 0 0; font-size: var(--fs-sm); }
 
 /* title bar: quick buttons, project name, autosave, link check, guide */
 .titlebar {
