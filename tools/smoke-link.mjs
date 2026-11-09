@@ -108,6 +108,7 @@ await tab("BOM");
 q = await bomQty("100L", "MAT-0001");
 check("its kg values from the MB are left out of the BOM, with the reason", /the MB gives kg, but MAT-0001 is counted in g/.test(q[2]), q[2]);
 await tab("Mass Balance");
+await page.getByRole("tablist", { name: "Sheets" }).getByRole("tab", { name: /^Material totals/ }).click();
 check("Mass Balance shows which material totals are left out", /Left out: unit differs from the material list/.test(await text(".page")));
 await page.getByRole("tab", { name: /^Materials/ }).click();
 await unit.fill("kg");
@@ -125,7 +126,7 @@ check("PFD shows a banner with Review and apply", await page.locator(".pfd-banne
 if (shot) await page.screenshot({ path: `${shot}-pfd-banner.png` });
 await page.locator(".pfd-banner").getByRole("button", { name: "Review and apply" }).click();
 await wait(600);
-check("which opens Mass Balance", /Apply to PFD and BOM/.test(await text(".page")));
+check("which opens Mass Balance", /Apply to PFD and BOM/.test(await text(".ribbon")));
 await page.getByRole("button", { name: "Apply to PFD and BOM" }).click();
 await wait(1200);
 check("applied: lines up, the PFD banner is gone", (await chip()).trim() === "Linked" && !(await page.locator(".pfd-banner").count()), await chip());

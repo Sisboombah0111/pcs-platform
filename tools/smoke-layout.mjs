@@ -128,11 +128,14 @@ await dragBy(tot.locator(".col-resizer"), -80);
 check("BOM totals: a column can be made narrower", (await tot.evaluate((e) => Math.round(e.getBoundingClientRect().width))) <= t0 - 70);
 
 await tab("Mass Balance");
+// N5.2: the Mass Balance values are sheets with tabs at the bottom
+await page.getByRole("tablist", { name: "Sheets" }).getByRole("tab", { name: /^Material totals/ }).click();
 const mbTh = page.locator("table.grid thead th", { hasText: /^Material$/ }).first();
 await mbTh.scrollIntoViewIfNeeded();
 const m0 = await mbTh.evaluate((e) => Math.round(e.getBoundingClientRect().width));
 await dragBy(mbTh.locator(".col-resizer"), 120);
 check("Mass Balance material totals: resizable", (await mbTh.evaluate((e) => Math.round(e.getBoundingClientRect().width))) >= m0 + 110);
+await page.getByRole("tablist", { name: "Sheets" }).getByRole("tab", { name: /^Streams/ }).click();
 const sv = page.locator("table.grid thead th", { hasText: /^Route$/ }).first();
 const s0 = await sv.evaluate((e) => Math.round(e.getBoundingClientRect().width));
 await sv.scrollIntoViewIfNeeded();

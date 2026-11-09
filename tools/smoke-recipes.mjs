@@ -71,6 +71,7 @@ await tab("Mass Balance");
 }
 await page.getByRole("button", { name: "Apply to PFD and BOM" }).click();
 await wait(1200);
+await page.getByRole("tablist", { name: "Sheets" }).getByRole("tab", { name: /^Material totals/ }).click();
 check("MB: the solution row is counted, through its recipe", /Counted · recipe: 2 components/.test(await text(".page")));
 check("link check: everything lines up", (await text(".link-chip")).trim() === "Linked", await text(".link-chip"));
 

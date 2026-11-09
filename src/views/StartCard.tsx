@@ -41,7 +41,7 @@ export function StartCard(props: { onOpenExample: (ex: Example) => void; onOpenF
       </p>
       <p className="start-version">
         PCS Platform {versionLabel()}{BUILD_DATE ? ` · ${BUILD_DATE}` : ""} · <a href={RELEASES_URL} target="_blank" rel="noreferrer">PC version (zip)</a>
-        {" · "}The <b>Guide</b> (top bar) walks through the linking steps.
+        {" · "}The <b>Guide</b> (top right) walks through the linking steps.
       </p>
     </section>
   );

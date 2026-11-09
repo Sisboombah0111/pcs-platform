@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { PageIntro } from "../ui/PageIntro";
+import { RibbonButton, RibbonGroup, ScreenRibbon } from "../ui/Ribbon";
 import { fmtQty } from "../mb/model";
 import { newId } from "../model/ids";
 import type { Equipment, EquipmentType, OpStep, Project, UnitOperation } from "../model/types";
@@ -121,9 +122,13 @@ export function OperationsView(props: {
           <div className="spacer" />
           <div className="toolbar">
             <span className="chip">{stepCount} steps · {actionCount} actions · {project.equipment.length} equipment</span>
-            <button className="btn" onClick={importExcel} title="Equipment, Steps, Actions and States sheets (as exported, or filled in by hand)">Import from Excel…</button>
-            <button className="btn primary" onClick={exportExcel} disabled={!stepCount && !project.equipment.length}>Export to Excel</button>
           </div>
+          <ScreenRibbon screen="operations">
+            <RibbonGroup label="Excel">
+              <RibbonButton big icon="import" onClick={importExcel} title="Equipment, Steps, Actions and States sheets (as exported, or filled in by hand)" label="Import from Excel…" />
+              <RibbonButton big primary icon="excel" onClick={exportExcel} disabled={!stepCount && !project.equipment.length} title="Equipment, steps, actions and the state table as an Excel workbook" label="Export to Excel" />
+            </RibbonGroup>
+          </ScreenRibbon>
         </div>
 
         {uos.length === 0 ? (

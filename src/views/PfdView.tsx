@@ -18,6 +18,7 @@ import { boundsOf, freeSpot, type Box } from "../pfd/placement";
 import { PfdPanel, type EquipmentInfo, type PanelActions, type Selection } from "../pfd/PfdPanel";
 import { StepOverlay } from "../pfd/StepOverlay";
 import { usePanelWidth } from "../ui/resize";
+import { RibbonButton, RibbonGroup, RibbonStack, ScreenRibbon } from "../ui/Ribbon";
 import { PptxExportDialog } from "./PptxExport";
 import { BOX_GAP, BOX_W, boxJson, frameJson } from "../pfd/shapes";
 import { copyDrawing, copyTag } from "../pfd/duplicate";
@@ -823,15 +824,28 @@ export function PfdView(props: {
           ))}
           <button className="sheet-tab add" onClick={() => actions.addUnit(`Unit operation ${uos.length + 1}`, true)} title="Add a unit operation (a box on the process map and its own drawing)">+ Unit operation</button>
         </div>
-        <div className="sheet-actions">
-          <button className="btn small" onClick={() => { const a = apiRef.current; if (a) fitView(a, true); }}
-            title="Show the whole drawing in the window (Shift+1)">Fit</button>
-          {current && (project.operations[current.id] ?? []).length > 0 && (
-            <button className={`btn small${stepView ? " on" : ""}`} aria-pressed={!!stepView} onClick={() => setStepView(stepView ? null : { at: 0 })}
-              title="Show what each step does on this drawing: valves open or closed, pumps running, the streams of the step">Step view</button>
-          )}
-          <button className="btn small" onClick={() => { flushNow(); setExporting(true); }} title="The process map and each unit operation on their own slides">Export to PowerPoint…</button>
-        </div>
+        <ScreenRibbon screen="pfd">
+          <RibbonGroup label="Insert">
+            <RibbonButton big icon="add" onClick={() => actions.addUnit(`Unit operation ${uos.length + 1}`, true)}
+              title="A box on the process map and its own drawing (the same as + Unit operation)" label="Unit operation" />
+            <RibbonStack>
+              <RibbonButton icon="table" onClick={actions.insertStreamTable} disabled={!streamsForScope(scope, streams).length}
+                title="A table of this drawing's streams (IDs, route, names, MB values) that follows the stream list" label="Stream table" />
+              <RibbonButton icon="sheet" onClick={actions.insertFreeTable} title="A table you fill in yourself" label="Table" />
+            </RibbonStack>
+          </RibbonGroup>
+          <RibbonGroup label="View">
+            <RibbonButton big icon="fit" onClick={() => { const a = apiRef.current; if (a) fitView(a, true); }}
+              title="Show the whole drawing in the window (Shift+1)" label="Fit" />
+            {current && (project.operations[current.id] ?? []).length > 0 && (
+              <RibbonButton big icon="steps" pressed={!!stepView} onClick={() => setStepView(stepView ? null : { at: 0 })}
+                title="Show what each step does on this drawing: valves open or closed, pumps running, the streams of the step" label="Step view" />
+            )}
+          </RibbonGroup>
+          <RibbonGroup label="Export">
+            <RibbonButton big primary icon="slides" onClick={() => { flushNow(); setExporting(true); }} title="The process map and each unit operation on their own slides" label="Export to PowerPoint…" />
+          </RibbonGroup>
+        </ScreenRibbon>
         </div>
         <div className="pfd-canvas">
           <SheetCanvas

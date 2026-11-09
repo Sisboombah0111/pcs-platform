@@ -5,7 +5,7 @@ import { Dialog } from "../ui/Dialog";
 const SCREEN: Record<Area, string> = { pfd: "PFD", operations: "Operations", mb: "Mass Balance", bom: "BOM", materials: "Materials" };
 const SHOWN = 8;
 
-/** The link status in the top bar: green when the PFD, the Mass Balance, the BOM and the material list line up. */
+/** The link status in the title bar: green when the PFD, the Mass Balance, the BOM and the material list line up. */
 export function LinkChip(props: { findings: LinkFinding[]; onOpen: () => void }) {
   const warn = props.findings.filter((f) => f.level === "warn").length;
   const info = props.findings.length - warn;

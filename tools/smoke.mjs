@@ -45,7 +45,7 @@ await page.mouse.move(760, 460, { steps: 6 });
 await page.mouse.up();
 await page.keyboard.press("Escape");
 await page.waitForTimeout(1200);
-check("autosave status shown", /Autosaved/.test(await page.textContent(".bar")), (await page.textContent(".status .label")) ?? "");
+check("autosave status shown", /Autosaved/.test(await page.textContent(".titlebar")), (await page.textContent(".titlebar .status .label")) ?? "");
 
 // Materials: sample list.
 await page.getByRole("tab", { name: /Materials/ }).click();
@@ -68,7 +68,7 @@ check("PFD shape kept after reload", stored.elements === 1, JSON.stringify(store
 check("material edit kept after reload", stored.materials === 33 && stored.first === "Basal Medium (분말)");
 
 // Save to file, start a new project, open the file again.
-check("unsaved changes: a dot on Save to file", (await page.locator(".unsaved-dot").count()) === 1);
+check("unsaved changes: a dot on Save to file (and on the quick Save button)", (await page.getByRole("button", { name: "Save to file" }).locator(".unsaved-dot").count()) === 1 && (await page.getByRole("button", { name: "Save (Ctrl+S)" }).locator(".unsaved-dot").count()) === 1);
 const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Save to file" }).click()]);
 const path = await download.path();
 const saved = JSON.parse(readFileSync(path, "utf8"));

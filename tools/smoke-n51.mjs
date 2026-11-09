@@ -39,9 +39,12 @@ for (const [w, h, label] of [[1920, 1080, "1920"], [1366, 768, "1366 laptop"], [
   const page = await fresh(w, h);
   const ok = (await onScreen(page, "Open")) && (await onScreen(page, "Save to file")) && (await onScreen(page, "New"));
   const sideways = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
-  const rows = await page.evaluate(() => Math.round(document.querySelector(".bar").getBoundingClientRect().height));
-  check(`top bar ${label}: New, Open and Save to file on screen, no sideways scrolling`, ok && !sideways, `bar ${rows} px high`);
-  if (w === 1366) check("on a 1366 px laptop the top bar is one row", rows <= 60, `${rows} px`);
+  // N5.2: title bar, ribbon tabs and ribbon (Office look); on a short window the ribbon starts as one line.
+  const rows = await page.evaluate(() => Math.round(document.querySelector(".ribbon").getBoundingClientRect().bottom));
+  const compact = await page.evaluate(() => document.querySelector(".ribbon").classList.contains("compact"));
+  check(`top bar ${label}: New, Open and Save to file on screen, no sideways scrolling`, ok && !sideways, `title bar + ribbon ${rows} px high${compact ? " (one-line ribbon)" : ""}`);
+  if (w === 1366) check("on a 1366 px laptop the title bar and the full ribbon take at most 180 px", !compact && rows <= 180, `${rows} px`);
+  if (h < 700) check(`on a short window (${h} px) the ribbon starts as one line, at most 120 px with the title bar`, compact && rows <= 120, `${rows} px`);
   await page.context().close();
 }
 

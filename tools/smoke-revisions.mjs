@@ -43,7 +43,7 @@ await page.evaluate(() => { try { for (const k of Object.keys(localStorage)) if 
 
 // ---- find: search, category, fold ---------------------------------------------------------------------------------
 await bomTab();
-check("no revision yet: the hint says how to start", /No revision yet/.test(await text(".bom-tools")) && /Revisions \(0\)/.test(await text(".page-head")));
+check("no revision yet: the hint says how to start", /No revision yet/.test(await text(".bom-tools")) && /Revisions \(0\)/.test(await text(".ribbon")));
 await page.getByLabel("Search the BOM").fill("sodium chloride");
 await wait(300);
 let s = await sections();
@@ -71,7 +71,7 @@ await page.getByLabel("Revision note").fill("Sent to purchasing");
 await page.getByLabel("Your name").fill("Kim");
 await page.getByRole("button", { name: "Save revision", exact: true }).click();
 await wait(500);
-check("saved: Revisions (1), no line changed since Rev A", /Revisions \(1\)/.test(await text(".page-head")) && /No line changed since Rev A/.test(await text(".bom-tools")));
+check("saved: Revisions (1), no line changed since Rev A", /Revisions \(1\)/.test(await text(".ribbon")) && /No line changed since Rev A/.test(await text(".bom-tools")));
 const ov = page.getByLabel("Overage of BUF-1002");
 await ov.click(); await ov.fill("10"); await ov.press("Enter");
 await page.getByLabel("Source of BUF-2003").selectOption("excluded");
@@ -145,7 +145,7 @@ await page.getByRole("button", { name: "Delete revision" }).click();
 await wait(300);
 await page.getByRole("button", { name: "Close", exact: true }).click();
 await wait(300);
-check("revision deleted: no marks, no revisions", /Revisions \(0\)/.test(await text(".page-head")) && !/since Rev A/.test(await line("PROA", "BUF-1002").innerText()));
+check("revision deleted: no marks, no revisions", /Revisions \(0\)/.test(await text(".ribbon")) && !/since Rev A/.test(await line("PROA", "BUF-1002").innerText()));
 
 check("no page errors", errors.length === 0, errors.slice(0, 3).join(" | "));
 await browser.close();

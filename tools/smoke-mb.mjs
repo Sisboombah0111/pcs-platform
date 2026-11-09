@@ -110,8 +110,15 @@ await page.getByRole("button", { name: "Apply to PFD and BOM" }).click();
 await wait(800);
 check("applied: button says Applied, history has 1 row", await page.getByRole("button", { name: "Applied" }).isDisabled() &&
   (await page.locator("section[aria-label='History'] tbody tr").count()) === 1);
-const applied = await text("section[aria-label='Applied values']");
+// N5.2: the applied values are sheets (tabs at the bottom, as in Excel); after applying, Streams is shown.
+const sheetTab = async (re) => { await page.getByRole("tablist", { name: "Sheets" }).getByRole("tab", { name: re }).click(); await wait(200); };
+check("after applying, the Streams sheet is shown", await page.locator("section[aria-label='Streams']").isVisible());
+const appliedStreams = await text("section[aria-label='Streams']");
+await sheetTab(/^Material totals/);
+const appliedMats = await text("section[aria-label='Material totals']");
+const applied = appliedStreams + "\n" + appliedMats;
 check("applied values: streams and materials per UO", /ST-100L-001[\s\S]*85[\s\S]*425/.test(applied) && /10L\s+MAT-0001[\s\S]*0\.1575/.test(applied) && /100L\s+MAT-0002[\s\S]*0\.62/.test(applied));
+await sheetTab(/^Streams/);
 if (shot) await page.screenshot({ path: `${shot}-mb-applied.png`, fullPage: true });
 
 // PFD: labels and stream table.
@@ -164,7 +171,9 @@ head = await text("section[aria-label='Check'] .section-head");
 const rulesSeen = await page.locator(".issue-table tbody tr td:nth-child(2)").allInnerTexts();
 check("errors file: 7 errors, apply disabled", /7 errors/.test(head) && await page.getByRole("button", { name: "Apply to PFD and BOM" }).isDisabled(), head.replace(/\n/g, " | "));
 check("errors file: rules V1 V2 V4 V5 V5 V6 V7", [...rulesSeen].sort().join(" ") === "V1 V2 V4 V5 V5 V6 V7", rulesSeen.join(" "));
-check("applied values unchanged (still v2)", /850/.test(await text("section[aria-label='Applied values']")));
+check("errors: the Check sheet is shown first", await page.locator("section[aria-label='Check']").isVisible());
+await sheetTab(/^Streams/);
+check("applied values unchanged (still v2)", /850/.test(await text("section[aria-label='Streams']")));
 if (shot) await page.screenshot({ path: `${shot}-mb-errors.png`, fullPage: true });
 
 // GridCraft round trip on the stored workbook.

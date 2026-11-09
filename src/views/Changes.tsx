@@ -46,7 +46,7 @@ export function ChangesDialog(props: { project: Project; onClose: () => void; on
     </>}>
       <p className="hint" style={{ marginTop: 0 }}>
         Changes on Materials, BOM, Operations and Mass Balance, unit operations added or renamed on the PFD, undo and redo. Saved with the project (newest 1000).
-        ↶ Undo and ↷ Redo in the top bar take back the last changes (not the drawing: it has its own undo).
+        ↶ Undo and ↷ Redo (top left) take back the last changes (not the drawing: it has its own undo).
       </p>
       <div className="toolbar" style={{ flexWrap: "wrap" }}>
         <label className="field-inline">Your name

@@ -19,6 +19,9 @@ import { linkCheck, type Area } from "./link/check";
 import { GuidePanel, guideOpenAtStart, rememberGuideOpen } from "./views/Guide";
 import type { GoTarget } from "./guide/content";
 import type { GoPlace } from "./views/WhereUsed";
+import { Icon } from "./ui/icons";
+import { RibbonButton, RibbonContext, RibbonGroup } from "./ui/Ribbon";
+import { useCellSelection } from "./ui/cellSelection";
 
 type Tab = "pfd" | "operations" | "mb" | "bom" | "materials";
 type SaveState = { kind: "idle" } | { kind: "saving" } | { kind: "saved"; at: string } | { kind: "error"; message: string };
@@ -32,6 +35,9 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+const ZOOMS = [70, 80, 90, 100, 110, 125, 150, 175];
+/** A sum or average in the status bar: thousands separated, at most 4 decimals (as Excel shows them). */
+const fmtStat = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: Math.abs(n) >= 1000 ? 2 : 4 });
 
 export default function App() {
   const [project, setProject] = useState<Project | null>(null);
@@ -50,6 +56,19 @@ export default function App() {
   const setGuideOpen = (open: boolean) => { setGuideOpenState(open); rememberGuideOpen(open); };
   const { confirm, element: confirmEl } = useConfirm();
   const { show: toast, element: toastEl } = useToast();
+  // The ribbon: full (big buttons, group names) or one line; remembered in this browser. On a short window
+  // (a laptop at 125–150 % scaling) it starts as one line.
+  const [ribbonCompact, setRibbonCompactState] = useState(() => {
+    try { const v = localStorage.getItem("pcs.ribbon.compact"); if (v !== null) return v === "1"; } catch { /* storage off */ }
+    return typeof window !== "undefined" && window.innerHeight < 700;
+  });
+  const setRibbonCompact = (v: boolean) => { setRibbonCompactState(v); try { localStorage.setItem("pcs.ribbon.compact", v ? "1" : "0"); } catch { /* storage off: this visit only */ } };
+  const [ribbonEl, setRibbonEl] = useState<HTMLElement | null>(null);
+  const [screenEl, setScreenEl] = useState<HTMLElement | null>(null);
+  // Zoom of the table screens (the status bar slider, as in Excel); the PFD drawing has its own zoom.
+  const [zoom, setZoomState] = useState(() => { try { const z = Number(localStorage.getItem("pcs.zoom")); return ZOOMS.includes(z) ? z : 100; } catch { return 100; } });
+  const setZoom = (z: number) => { setZoomState(z); try { localStorage.setItem("pcs.zoom", String(z)); } catch { /* storage off */ } };
+  const selStats = useCellSelection(screenEl, `${tab}:${project?.id ?? ""}`, (r, c) => toast(`Copied ${r} × ${c} cell${r * c > 1 ? "s" : ""}: paste into Excel`));
 
   const latest = useRef<{ project: Project | null; fileSavedVersion?: string }>({ project: null });
   latest.current = { project, fileSavedVersion };
@@ -216,8 +235,13 @@ export default function App() {
         saveFile();
         return;
       }
-      // Ctrl+Z / Ctrl+Y outside the drawing and outside text fields (they keep their own undo while typing).
       const k = e.key.toLowerCase();
+      // Ctrl+F on a screen with a search box: that box (as Find in Office); elsewhere the browser's own find.
+      if ((e.ctrlKey || e.metaKey) && k === "f" && !e.altKey && !e.shiftKey && tabRef.current !== "pfd" && !document.querySelector(".dialog")) {
+        const box = [...document.querySelectorAll<HTMLInputElement>(".screen-layer input.search[type='search'], .screen-layer input.search[aria-label^='Search']")].find((x) => x.offsetParent !== null);
+        if (box) { e.preventDefault(); box.focus(); box.select(); return; }
+      }
+      // Ctrl+Z / Ctrl+Y outside the drawing and outside text fields (they keep their own undo while typing).
       if (!(e.ctrlKey || e.metaKey) || (k !== "z" && k !== "y") || e.altKey || tabRef.current === "pfd") return;
       const t = e.target as HTMLElement | null;
       if (t && (t.closest("input, textarea, select, [contenteditable='true']") || t.closest(".dialog, .gc-overlay"))) return;
@@ -310,16 +334,47 @@ export default function App() {
     }
   })();
 
+  const saveTitle = unsavedToFile ? "Not saved to a file yet: autosaved in this browser only. Save to a file to open it on another PC or share it (Ctrl+S)." : "Saved to a file (Ctrl+S)";
+  const lastUndo = history.current.past[history.current.past.length - 1];
+  const lastRedo = history.current.future[history.current.future.length - 1];
+
   return (
-    <div className="app">
-      <header className="bar">
-        <input
-          className="project-name"
-          value={project.meta.name}
-          onChange={(e) => update((p) => ({ ...p, meta: { ...p.meta, name: e.target.value } }))}
-          aria-label="Project name"
-          spellCheck={false}
-        />
+    <div className="app" data-office={tab === "pfd" ? "ppt" : "xl"}>
+      {/* Office look (N5.2): a title bar with the quick buttons, the screens as ribbon tabs, the ribbon, and a
+          status bar at the bottom. Excel green on the table screens, PowerPoint orange on the PFD. */}
+      <header className="titlebar">
+        <div className="qat" role="group" aria-label="Quick access">
+          <button className={`qat-btn${unsavedToFile ? " unsaved" : ""}`} aria-label="Save (Ctrl+S)" title={saveTitle} onClick={saveFile}>
+            <Icon name="save" />{unsavedToFile && <span className="unsaved-dot" aria-hidden />}
+          </button>
+          <button className="qat-btn" aria-label="Undo change" disabled={!lastUndo} onClick={() => applyHistory("undo")}
+            title={lastUndo ? `Undo: ${lastUndo.label} (Ctrl+Z outside the drawing). Materials, BOM, Operations and Mass Balance; the PFD drawing has its own undo.` : "Nothing to undo (the PFD drawing has its own undo)"}><Icon name="undo" /></button>
+          <button className="qat-btn" aria-label="Redo change" disabled={!lastRedo} onClick={() => applyHistory("redo")}
+            title={lastRedo ? `Redo: ${lastRedo.label} (Ctrl+Y)` : "Nothing to redo"}><Icon name="redo" /></button>
+        </div>
+        <div className="title-center">
+          <input
+            className="project-name"
+            value={project.meta.name}
+            onChange={(e) => update((p) => ({ ...p, meta: { ...p.meta, name: e.target.value } }))}
+            aria-label="Project name"
+            spellCheck={false}
+            size={Math.max(8, Math.min(40, project.meta.name.length + 1))}
+          />
+          <span className="title-app">PCS Platform</span>
+          <span className="status" title={"title" in status ? status.title : status.text}>
+            <span className={`dot ${status.dot}`} /><span className="label">{status.text}</span>
+          </span>
+        </div>
+        <div className="title-right">
+          <LinkChip findings={findings} onOpen={() => setLinkOpen(true)} />
+          <button className={`title-btn guide-btn${guideOpen ? " on" : ""}`} aria-pressed={guideOpen} onClick={() => setGuideOpen(!guideOpen)}
+            title="Step-by-step guide to linking the PFD, the Mass Balance and the BOM (English / 한국어)">
+            <Icon name="help" /> Guide
+          </button>
+        </div>
+      </header>
+      <div className="ribbon-tabs">
         <nav className="tabs" role="tablist" aria-label="Screens">
           {TABS.map((t) => (
             <button key={t.id} role="tab" className="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}>
@@ -328,40 +383,30 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="undo-group" role="group" aria-label="Undo and redo">
-          <button className="btn icon-btn" aria-label="Undo change" disabled={!history.current.past.length} onClick={() => applyHistory("undo")}
-            title={history.current.past.length ? `Undo: ${history.current.past[history.current.past.length - 1].label} (Ctrl+Z outside the drawing). Materials, BOM, Operations and Mass Balance; the PFD drawing has its own undo.` : "Nothing to undo (the PFD drawing has its own undo)"}>↶</button>
-          <button className="btn icon-btn" aria-label="Redo change" disabled={!history.current.future.length} onClick={() => applyHistory("redo")}
-            title={history.current.future.length ? `Redo: ${history.current.future[history.current.future.length - 1].label} (Ctrl+Y)` : "Nothing to redo"}>↷</button>
-          <button className="btn changes-btn" onClick={() => setLogOpen(true)} title="Who changed what, when (saved with the project)">Changes</button>
-        </div>
-        <button className={`btn guide-btn${guideOpen ? " on" : ""}`} aria-pressed={guideOpen} onClick={() => setGuideOpen(!guideOpen)}
-          title="Step-by-step guide to linking the PFD, the Mass Balance and the BOM (English / 한국어)">
-          <span className="guide-q" aria-hidden>?</span> Guide
+        <button className="ribbon-size" onClick={() => setRibbonCompact(!ribbonCompact)} aria-pressed={!ribbonCompact}
+          aria-label={ribbonCompact ? "Show the full ribbon" : "Show a one-line ribbon"} title={ribbonCompact ? "Full ribbon: big buttons with group names" : "One-line ribbon: more room for the work"}>
+          <Icon name={ribbonCompact ? "down" : "up"} />
         </button>
-        {/* Status, link check and the file buttons stay together and on screen: on a narrow window (a laptop at
-            125–150 % Windows scaling) they move to a second row instead of being pushed out of view. */}
-        <div className="bar-right">
-          <div className="status" title={"title" in status ? status.title : status.text}>
-            <span className={`dot ${status.dot}`} /><span className="label">{status.text}</span>
-          </div>
-          <LinkChip findings={findings} onOpen={() => setLinkOpen(true)} />
-          <div className="actions">
-            <button className="btn" onClick={() => setNewDialog(true)}>New</button>
-            <button className="btn" onClick={openFile}>Open</button>
-            <button className={`btn primary${unsavedToFile ? " unsaved" : ""}`} onClick={saveFile}
-              title={unsavedToFile ? "Not saved to a file yet: autosaved in this browser only. Save to a file to open it on another PC or share it (Ctrl+S)." : "Saved to a file (Ctrl+S)"}>
-              {unsavedToFile && <span className="unsaved-dot" aria-hidden />}Save to file
-            </button>
-          </div>
-        </div>
-      </header>
+      </div>
+      <div className={`ribbon${ribbonCompact ? " compact" : ""}`}>
+        <RibbonGroup label="File">
+          <RibbonButton big icon="new" label="New" onClick={() => setNewDialog(true)} title="Start a new project" />
+          <RibbonButton big icon="open" label="Open" onClick={openFile} title="Open a project file (.pcs.json)" />
+          <RibbonButton big primary icon="save" className={unsavedToFile ? "unsaved" : ""} onClick={saveFile} title={saveTitle}
+            label={<>{unsavedToFile && <span className="unsaved-dot" aria-hidden />}Save to file</>} />
+        </RibbonGroup>
+        <div className="ribbon-screen" ref={setRibbonEl} />
+        <RibbonGroup label="History">
+          <RibbonButton big icon="history" label="Changes" onClick={() => setLogOpen(true)} title="Who changed what, when (saved with the project)" />
+        </RibbonGroup>
+      </div>
 
       {import.meta.env.MODE === "singlefile" ? (
         <div className="preview-banner">
           Preview build. Downloads (Save to file, Excel export) may be blocked here, and autosave stays in this browser only. Everything works in the GitHub Pages deployment.
         </div>
       ) : <div />}
+      <RibbonContext.Provider value={{ el: ribbonEl, screen: tab }}>
       <div className="workspace">
       <main className="work">
         {/* The PFD editor stays mounted (keeps its undo history); other screens cover it. */}
@@ -382,7 +427,7 @@ export default function App() {
           />
         </div>
         {tab !== "pfd" && (
-          <div className="screen-layer">
+          <div className="screen-layer" ref={setScreenEl} style={zoom !== 100 ? { zoom: zoom / 100 } : undefined}>
             {tab === "materials" && (
               <MaterialsView
                 project={project}
@@ -407,6 +452,26 @@ export default function App() {
       </main>
       {guideOpen && <GuidePanel project={project} findings={findings} screen={tab} onGo={guideGo} onClose={() => setGuideOpen(false)} />}
       </div>
+      </RibbonContext.Provider>
+
+      <footer className="statusbar">
+        <span className="sb-ready">{saveState.kind === "saving" ? "Saving…" : "Ready"}</span>
+        <span className="sb-where">{unsavedToFile ? "Autosaved in this browser · not saved to a file yet" : "Saved to a file"}</span>
+        <span className="sb-stats" aria-live="polite">
+          {selStats && selStats.count > 1 && (selStats.numbers > 0
+            ? <><span>Average: {fmtStat(selStats.sum / selStats.numbers)}</span><span>Count: {selStats.count}</span><span>Sum: {fmtStat(selStats.sum)}</span></>
+            : <span>Count: {selStats.count}</span>)}
+        </span>
+        {tab !== "pfd" && (
+          <span className="sb-zoom" role="group" aria-label="Zoom">
+            <button className="sb-btn" aria-label="Zoom out" disabled={zoom <= ZOOMS[0]} onClick={() => setZoom(ZOOMS[Math.max(0, ZOOMS.indexOf(zoom) - 1)])}><Icon name="minus" size={16} /></button>
+            <input type="range" className="sb-range" min={0} max={ZOOMS.length - 1} step={1} value={Math.max(0, ZOOMS.indexOf(zoom))}
+              onChange={(e) => setZoom(ZOOMS[Number(e.target.value)])} aria-label="Zoom level" aria-valuetext={`${zoom}%`} />
+            <button className="sb-btn" aria-label="Zoom in" disabled={zoom >= ZOOMS[ZOOMS.length - 1]} onClick={() => setZoom(ZOOMS[Math.min(ZOOMS.length - 1, ZOOMS.indexOf(zoom) + 1)])}><Icon name="plus" size={16} /></button>
+            <button className="sb-pct" onClick={() => setZoom(100)} title="Back to 100%">{zoom}%</button>
+          </span>
+        )}
+      </footer>
 
       {linkOpen && <LinkDialog findings={findings} onClose={() => setLinkOpen(false)} goTo={goTo}
         showStream={(id) => { setLinkOpen(false); setTab("pfd"); setTimeout(() => pfdControl.current?.focusStream(id), 50); }} />}

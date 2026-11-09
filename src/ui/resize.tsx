@@ -108,7 +108,8 @@ export function useColumns(key: string, columns: ColumnDef[]) {
   const start = (i: number) => (e: ReactPointerEvent) => {
     e.stopPropagation();
     // Freeze the widths the columns have on screen now.
-    const ths = [...(tableRef.current?.querySelectorAll<HTMLTableCellElement>(":scope > thead > tr:first-child > th") ?? [])];
+    // The header row is the last row of <thead> (a sheet has a row of column letters above it); row numbers are not columns.
+    const ths = [...(tableRef.current?.querySelectorAll<HTMLTableCellElement>(":scope > thead > tr:last-child > th:not(.rn)") ?? [])];
     const now: Record<string, number> = {};
     columns.forEach((c, j) => { now[c.id] = Math.round(widths[c.id] ?? ths[j]?.getBoundingClientRect().width ?? c.width ?? 120); });
     const id = columns[i].id;
@@ -141,15 +142,38 @@ export interface Head extends ColumnDef {
   ariaLabel?: string;
 }
 
-/** The <thead> of a table made with useColumns: one row, a drag handle at the right edge of each header. */
-export function HeadRow(props: { heads: Head[]; cols: ReturnType<typeof useColumns> }) {
+/** Excel's column name for a 0-based index: A … Z, AA … */
+export function columnLetter(i: number): string {
+  let s = "";
+  for (let n = i + 1; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s;
+  return s;
+}
+
+/**
+ * The <thead> of a table made with useColumns: one row, a drag handle at the right edge of each header.
+ * `sheet`: drawn like an Excel sheet (N5.2): a row of column letters above, and a row-number column (header = row 1).
+ */
+export function HeadRow(props: { heads: Head[]; cols: ReturnType<typeof useColumns>; sheet?: boolean }) {
   return (
     <thead>
+      {props.sheet && (
+        <tr className="xl-letters" aria-hidden="true">
+          <th className="rn corner" />
+          {props.heads.map((h, i) => <th key={h.id}>{columnLetter(i)}</th>)}
+        </tr>
+      )}
       <tr>
+        {props.sheet && <th className="rn" aria-hidden="true">1</th>}
         {props.heads.map((h, i) => (
           <th key={h.id} className={h.className} title={h.title} aria-label={h.ariaLabel}>{h.label}{props.cols.handle(i)}</th>
         ))}
       </tr>
     </thead>
   );
+}
+
+/** The table style of a sheet: the row-number column (44 px) added to the widths useColumns gives. */
+export function sheetTableStyle(style: CSSProperties): CSSProperties {
+  const add = (v: CSSProperties["width"]) => (typeof v === "number" ? v + 44 : v);
+  return { ...style, ...(style.width !== undefined ? { width: add(style.width) } : {}), ...(style.minWidth !== undefined ? { minWidth: add(style.minWidth) } : {}) };
 }

@@ -125,8 +125,8 @@ export const STEPS: Record<StepId, StepText> = {
   linked: {
     title: b("Keep it linked", "연동 유지"),
     why: b(
-      "The top bar checks the PFD, the Mass Balance, the BOM and the material list all the time. Values that no longer match are left out of the BOM, and it says why.",
-      "상단 표시가 PFD·Mass Balance·BOM·자재 목록을 계속 점검합니다. 더 이상 맞지 않는 값은 BOM에서 빠지고 이유가 표시됩니다.",
+      "The link status (title bar, top right) checks the PFD, the Mass Balance, the BOM and the material list all the time. Values that no longer match are left out of the BOM, and it says why.",
+      "연동 표시(제목 표시줄 오른쪽 위)가 PFD·Mass Balance·BOM·자재 목록을 계속 점검합니다. 더 이상 맞지 않는 값은 BOM에서 빠지고 이유가 표시됩니다.",
     ),
     how: [
       b("Changed the MB: save it, then apply again.", "MB를 고쳤으면: 저장한 뒤 다시 적용합니다."),
@@ -144,13 +144,13 @@ export const SCREENS: Record<Screen, { title: Bilingual; items: Bilingual[] }> =
   pfd: {
     title: b("PFD", "PFD"),
     items: [
-      b("Tabs: Process map, one tab per unit operation, + Unit operation; Export to PowerPoint… on the right.", "탭: Process map, 단위공정마다 탭 하나, + Unit operation. 오른쪽에 Export to PowerPoint…."),
+      b("Tabs: Process map, one tab per unit operation, + Unit operation. Fit, Step view and Export to PowerPoint… are in the ribbon.", "탭: Process map, 단위공정마다 탭 하나, + Unit operation. Fit, Step view, Export to PowerPoint…는 리본에 있습니다."),
       b("Side panel: Symbols, Units, Streams. Drag its left edge to make it wider; double-click for the default width.", "오른쪽 패널: Symbols, Units, Streams. 왼쪽 경계를 끌어 넓히고, 더블클릭하면 기본 너비."),
       b("Units: ⧉ duplicates a unit operation (drawing, steps, BOM lines, equipment with new tags); transfers are drawn again on the map.", "Units: ⧉로 단위공정 복제(도면·단계·BOM 줄·새 태그의 장비). 이송은 공정 맵에서 다시 그립니다."),
       b("Select an arrow: Stream ID, route, MB values, Stream name, and lines or parts linked on it.", "화살표 선택: Stream ID, 경로, MB 값, Stream name, 화살표에 연결한 라인·부품."),
       b("Select a symbol: Linked materials, counted in pieces for the BOM of this unit operation.", "심볼 선택: Linked materials. 이 단위공정 BOM에 개수로 들어갑니다."),
       b("Select a valve, pump or agitator: Equipment tag (XV-101 …). The tag becomes the first line of its label and links it to the steps on Operations.", "밸브·펌프·교반기 선택: Equipment tag(XV-101 등). 태그가 라벨 첫 줄에 쓰이고 Operations의 단계와 연결됩니다."),
-      b("Step view (top right of a unit operation's drawing): pick a step; tagged valves show open (green) or closed (grey), ▶ = switched in that step, the step's streams in blue.", "Step view(단위공정 도면 오른쪽 위): 단계를 고르면 태그가 붙은 밸브가 열림(초록)·닫힘(회색)으로, ▶ = 그 단계에서 바뀐 것, 그 단계의 스트림은 파란색으로 보입니다."),
+      b("Step view (ribbon, on a unit operation's drawing): pick a step; tagged valves show open (green) or closed (grey), ▶ = switched in that step, the step's streams in blue.", "Step view(리본, 단위공정 도면에서): 단계를 고르면 태그가 붙은 밸브가 열림(초록)·닫힘(회색)으로, ▶ = 그 단계에서 바뀐 것, 그 단계의 스트림은 파란색으로 보입니다."),
       b("Labels show ID / name / value; what the value line shows is set on Mass Balance › PFD labels show.", "라벨은 ID / 이름 / 값 3줄. 값 줄의 표시 방식은 Mass Balance › PFD labels show에서 정합니다."),
       b("Click the drawing once, then Ctrl+Z / Ctrl+Y to undo or redo.", "도면을 한 번 클릭한 뒤 Ctrl+Z / Ctrl+Y로 되돌리기·다시."),
     ],
@@ -170,10 +170,11 @@ export const SCREENS: Record<Screen, { title: Bilingual; items: Bilingual[] }> =
   mb: {
     title: b("Mass Balance", "Mass Balance"),
     items: [
-      b("Workbook card: Edit in GridCraft, Download, Replace…, Download PCS_LINK sheet, Remove.", "워크북 카드: Edit in GridCraft, Download, Replace…, Download PCS_LINK sheet, Remove."),
-      b("Check of PCS_LINK: errors V1–V8 with their cell. Apply stays off while there are errors.", "Check of PCS_LINK: V1~V8 오류와 셀 위치. 오류가 있으면 Apply가 막힙니다."),
-      b("Changes against the applied values, then Apply to PFD and BOM.", "Changes against the applied values를 확인한 뒤 Apply to PFD and BOM."),
-      b("Applied values: PFD labels show, Active scenario, values per stream, Material totals (In the BOM: counted, or left out and why).", "Applied values: PFD labels show, Active scenario, 스트림별 값, Material totals(In the BOM: 집계됨 또는 빠짐과 이유)."),
+      b("Ribbon › Workbook: Edit in GridCraft, Replace…, Download, Download PCS_LINK sheet, Remove. The bar under the title says the file's state: applied, changes to apply, or errors.", "리본 › Workbook: Edit in GridCraft, Replace…, Download, Download PCS_LINK sheet, Remove. 제목 아래 막대가 파일 상태(적용됨, 적용할 변경, 오류)를 알려 줍니다."),
+      b("Sheets at the bottom, as in Excel: Streams, Material totals, Check, Changes, History. Click a value: the formula bar shows its PCS_LINK cell and formula (e.g. =MB_calc!C57).", "아래쪽 시트 탭(Excel처럼): Streams, Material totals, Check, Changes, History. 값을 클릭하면 수식 입력줄에 그 값의 PCS_LINK 칸과 수식(예: =MB_calc!C57)이 나옵니다."),
+      b("Check sheet: errors V1–V8 with their cell. Apply stays off while there are errors.", "Check 시트: V1~V8 오류와 셀 위치. 오류가 있으면 Apply가 막힙니다."),
+      b("Changes sheet (changed values in yellow), then Apply to PFD and BOM in the ribbon.", "Changes 시트(바뀐 값은 노란 칸)를 확인한 뒤 리본의 Apply to PFD and BOM."),
+      b("Ribbon › Apply: PFD labels (and Active scenario), Your name, Scenarios…. Streams and Material totals sheets: the applied values (In the BOM: counted, or left out and why).", "리본 › Apply: PFD labels(와 Active scenario), Your name, Scenarios…. Streams·Material totals 시트: 적용된 값(In the BOM: 집계됨 또는 빠짐과 이유)."),
       b("History: one line per application, with the name in Your name.", "History: 적용할 때마다 한 줄, Your name의 이름이 함께 기록됩니다."),
       b("Scenarios…: add a scenario (e.g. a clinical batch), rename it, order them, set its PCS_LINK column; apply the workbook again to read a new column.", "Scenarios…: 시나리오 추가(예: 임상 배치), 이름·순서·PCS_LINK 열 변경. 새 열은 워크북을 다시 Apply해야 읽힙니다."),
     ],
@@ -246,12 +247,14 @@ export const RULES: { title: Bilingual; rows: [Bilingual, Bilingual][] }[] = [
     ],
   },
   {
-    title: b("Link status (top bar)", "연동 표시 (상단)"),
+    title: b("Title bar, ribbon and status bar", "제목 표시줄, 리본, 상태 표시줄"),
     rows: [
       [b("Linked", "Linked"), b("everything lines up", "모두 맞음")],
       [b("Linked · n notes", "Linked · n notes"), b("lines up; read the notes", "맞음, 참고 사항 확인")],
       [b("Link check: n to fix", "Link check: n to fix"), b("something does not line up; its values are left out of the BOM", "맞지 않는 것이 있음, 그 값은 BOM에서 빠짐")],
-      [b("↶ ↷", "↶ ↷"), b("undo / redo on Materials, BOM, Operations, Mass Balance (Ctrl+Z / Ctrl+Y outside the drawing); the drawing has its own undo", "Materials·BOM·Operations·Mass Balance 되돌리기·다시(도면 밖에서 Ctrl+Z / Ctrl+Y). 도면은 자체 되돌리기 사용")],
+      [b("Save · ↶ ↷ (top left)", "저장 · ↶ ↷ (왼쪽 위)"), b("Save to file (Ctrl+S); undo / redo on Materials, BOM, Operations, Mass Balance (Ctrl+Z / Ctrl+Y outside the drawing); the drawing has its own undo", "Save to file(Ctrl+S). Materials·BOM·Operations·Mass Balance 되돌리기·다시(도면 밖에서 Ctrl+Z / Ctrl+Y). 도면은 자체 되돌리기 사용")],
+      [b("Ribbon", "리본"), b("File (New, Open, Save to file), the open screen's buttons, History; the arrow at the right of the tabs makes it one line", "File(New, Open, Save to file), 열린 화면의 버튼, History. 탭 오른쪽 화살표로 한 줄로 줄임")],
+      [b("Status bar", "상태 표시줄"), b("click a table cell, Shift+click or drag to another: Average, Count and Sum, as in Excel; Ctrl+C copies the cells for Excel; zoom at the right. Keys: arrows, Tab and Enter move, Shift+arrows extend, F2 or typing edits, ↑ ↓ in a field go to the field above or below, Ctrl+F finds", "표의 칸을 클릭하고 Shift+클릭 또는 끌기: Excel처럼 평균·개수·합계. Ctrl+C로 칸을 복사해 Excel에 붙여넣기. 오른쪽은 확대/축소. 키: 방향키·Tab·Enter로 이동, Shift+방향키로 범위, F2나 바로 입력으로 편집, 입력 칸에서 ↑ ↓는 위아래 칸으로, Ctrl+F는 검색")],
       [b("Changes", "Changes"), b("who changed what, when; saved with the project, exported to Excel", "누가 언제 무엇을 바꿨는지. 프로젝트에 저장, Excel로 내보내기")],
     ],
   },

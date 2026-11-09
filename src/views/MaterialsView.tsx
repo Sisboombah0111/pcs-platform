@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { PageIntro } from "../ui/PageIntro";
+import { RibbonButton, RibbonGroup, ScreenRibbon } from "../ui/Ribbon";
 import { computeBom } from "../bom/model";
 import { usageCounts } from "../model/whereUsed";
 import { WhereUsedDialog, type GoPlace } from "./WhereUsed";
@@ -229,16 +230,21 @@ export function MaterialsView(props: {
               <option value="review">Under review</option>
               <option value="obsolete">Obsolete</option>
             </select>
-            <button className="btn" onClick={importFile}>Import Excel/CSV</button>
-            <button className="btn" onClick={exportFile} disabled={!materials.length}>Export to Excel</button>
-            {missingSamples && (
-              <button className="btn" onClick={addSamples}
-                title="This list uses the sample codes: add the samples it does not have yet (lines, transfer panel, buffer chemicals …) and the sample recipes and backups">
-                {missingCount ? `Add ${missingCount} missing sample(s)` : "Add sample recipes and backups"}
-              </button>
-            )}
-            <button className="btn primary" onClick={add}>Add material</button>
           </div>
+          <ScreenRibbon screen="materials">
+            <RibbonGroup label="Materials">
+              <RibbonButton big primary icon="add" onClick={add} title="A new row at the top of the list" label="Add material" />
+              {missingSamples && (
+                <RibbonButton big icon="samples" onClick={addSamples}
+                  title="This list uses the sample codes: add the samples it does not have yet (lines, transfer panel, buffer chemicals …) and the sample recipes and backups"
+                  label={missingCount ? `Add ${missingCount} missing sample(s)` : "Add sample recipes and backups"} />
+              )}
+            </RibbonGroup>
+            <RibbonGroup label="Excel">
+              <RibbonButton big icon="import" onClick={importFile} title="Materials, Recipes and Backups sheets, or a CSV file" label="Import Excel/CSV" />
+              <RibbonButton big icon="excel" onClick={exportFile} disabled={!materials.length} title="The material list as an Excel workbook" label="Export to Excel" />
+            </RibbonGroup>
+          </ScreenRibbon>
         </div>
 
         {pendingMb.length > 0 && (

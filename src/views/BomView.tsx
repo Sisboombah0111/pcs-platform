@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { PageIntro } from "../ui/PageIntro";
+import { RibbonButton, RibbonGroup, ScreenRibbon } from "../ui/Ribbon";
 import { addManualLine, batchesFor, computeBom, removeLine, setLine, type Values, type BomBackup, type BomPart, type BomResult, type BomRow, type BomTotal, type BomUo } from "../bom/model";
 import { fmtQty } from "../mb/model";
 import { batchSize, componentText, recipeOf, withBackups } from "../model/recipes";
@@ -108,10 +109,16 @@ export function BomView(props: { project: Project; update: Update; confirm: Conf
           <div className="toolbar">
             <span className="chip">{lineCount} lines · {bom.uos.length} unit operations</span>
             {bom.issueCount > 0 ? <span className="chip warn">{bom.issueCount} to check</span> : lineCount > 0 && <span className="chip ok">Complete</span>}
-            <button className="btn" onClick={() => setDialog({ kind: "list" })} title="Saved revisions: compare any two">Revisions ({revisions.length})</button>
-            <button className="btn" onClick={() => setDialog({ kind: "save" })} disabled={!lineCount} title="Keep what the BOM says now, to see later what changed">Save revision…</button>
-            <button className="btn primary" onClick={exportExcel} disabled={!lineCount}>Export to Excel</button>
           </div>
+          <ScreenRibbon screen="bom">
+            <RibbonGroup label="Revisions">
+              <RibbonButton big icon="revisions" onClick={() => setDialog({ kind: "list" })} title="Saved revisions: compare any two" label={`Revisions (${revisions.length})`} />
+              <RibbonButton big icon="bookmark" onClick={() => setDialog({ kind: "save" })} disabled={!lineCount} title="Keep what the BOM says now, to see later what changed" label="Save revision…" />
+            </RibbonGroup>
+            <RibbonGroup label="Export">
+              <RibbonButton big primary icon="excel" onClick={exportExcel} disabled={!lineCount} title="The BOM of every scenario as an Excel workbook" label="Export to Excel" />
+            </RibbonGroup>
+          </ScreenRibbon>
         </div>
 
         {!project.mb.current && (
