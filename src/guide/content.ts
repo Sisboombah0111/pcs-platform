@@ -158,8 +158,8 @@ export const SCREENS: Record<Screen, { title: Bilingual; items: Bilingual[] }> =
   operations: {
     title: b("Operations", "Operations"),
     items: [
-      b("Left: the unit operations (from the PFD) and Equipment. Each unit operation has its steps, in order.", "왼쪽: 단위공정(PFD에서 옴)과 Equipment. 단위공정마다 단계를 순서대로 적습니다."),
-      b("+ Step, or Add steps from a template (chromatography, UF/DF, virus filtration, buffer preparation …) and change them to fit.", "+ Step, 또는 템플릿(크로마토그래피·UF/DF·바이러스 여과·버퍼 조제 등)으로 시작한 뒤 맞게 고칩니다."),
+      b("Sheets at the bottom: one per unit operation (from the PFD) and Equipment. Each unit operation has its steps, in order.", "아래 시트 탭: 단위공정마다 한 장(PFD에서 옴)과 Equipment. 단위공정마다 단계를 순서대로 적습니다."),
+      b("Ribbon: + Step, or Add steps from a template (chromatography, UF/DF, virus filtration, buffer preparation …) and change them to fit; Steps & actions / State table; Show on PFD.", "리본: + Step, 또는 템플릿(크로마토그래피·UF/DF·바이러스 여과·버퍼 조제 등)으로 시작한 뒤 맞게 고칩니다. Steps & actions / State table 전환, Show on PFD."),
       b("Steps & actions: per step its minutes, the Stream IDs that flow (with the applied MB value) and the actions: + Action › tag › Open/Close or Start/Stop.", "Steps & actions: 단계마다 시간(분), 흐르는 Stream ID(적용된 MB 값과 함께), 동작: + Action › 태그 › Open/Close 또는 Start/Stop."),
       b("State table: equipment × steps. Click a cell to switch Open/Closed or On/Off; bold = an action in that step, grey = kept from the step before. Double-click for a value (50 %, 150 rpm).", "State table: 설비 × 단계. 칸을 누르면 Open/Closed, On/Off가 바뀝니다. 굵게 = 그 단계의 동작, 회색 = 앞 단계 상태 유지. 더블클릭하면 값(50 %, 150 rpm) 입력."),
       b("Equipment: tags from the PFD come in by themselves; add others here. A tag changed here changes on the PFD label too.", "Equipment: PFD에서 준 태그는 저절로 들어오고, 그 밖의 설비는 여기서 추가합니다. 여기서 태그를 바꾸면 PFD 라벨도 바뀝니다."),
@@ -182,19 +182,19 @@ export const SCREENS: Record<Screen, { title: Bilingual; items: Bilingual[] }> =
   bom: {
     title: b("BOM", "BOM"),
     items: [
-      b("One section per unit operation, in process map order; ▾ folds a section. Search, category and To check / Manual / Changed filters above the sections.", "단위공정마다 구역 하나, 공정 맵 순서. ▾로 구역 접기. 위쪽에 검색·카테고리·To check / Manual / Changed 필터."),
+      b("Sheets at the bottom: All (every unit operation and the totals), one per unit operation, Totals. In All, ▾ folds a unit operation (Fold all / Unfold all in the ribbon). Find, category and To check / Manual / Changed filters are in the ribbon.", "아래 시트 탭: All(모든 단위공정과 합계), 단위공정마다 한 장, Totals. All에서 ▾로 단위공정 접기(리본의 Fold all / Unfold all). 찾기·카테고리·To check / Manual / Changed 필터는 리본에."),
       b("Save revision… keeps the BOM as it is; lines changed since then show ▲/▼ and New, removed lines stay in red. Revisions compares any two and exports the changes.", "Save revision…으로 지금 BOM을 저장하면, 이후 바뀐 줄에 ▲/▼·New가 붙고 빠진 줄은 빨간 줄로 남습니다. Revisions에서 두 리비전을 비교하고 변경 내역을 내보냅니다."),
       b("Click a material code: the material view — its facts, quantities per unit operation and scenario (total, packs, batches), and Where used (BOM, recipes, MB rows, PFD links, backups) with a button to each place.", "자재 코드를 누르면 자재 보기: 자재 정보, 단위공정·시나리오별 수량(합계·포장 수·배치 수), Where used(BOM·레시피·MB 행·PFD 연결·대체 자재)와 각 위치로 가는 버튼."),
       b("Source: MB, PFD, Manual or Not counted. Overage % empty = the material's default.", "Source: MB, PFD, Manual, Not counted. Overage % 빈칸 = 자재 기본값."),
       b("A prepared material shows its recipe rows (↳) and, when made in batches, the batches per scenario.", "만드는 자재는 레시피 줄(↳)을, 배치로 만들면 시나리오별 배치 수를 보여 줍니다."),
       b("Hover a line for + Backup. Reset = back to the automatic source and overage.", "줄에 마우스를 올리면 + Backup. Reset = 자동 출처와 기본 여유율로."),
-      b("Below: Totals per material, Prepared in-house (with batches), Backup materials. Drag a header edge to resize columns.", "아래: Totals per material, Prepared in-house(배치 수 포함), Backup materials. 머리글 경계를 끌어 열 너비 조절."),
+      b("Totals sheet (and the end of All): Totals per material, Prepared in-house (with batches), Backup materials. Drag a header edge to resize columns.", "Totals 시트(All의 끝에도): Totals per material, Prepared in-house(배치 수 포함), Backup materials. 머리글 경계를 끌어 열 너비 조절."),
     ],
   },
   materials: {
     title: b("Materials", "Materials"),
     items: [
-      b("Code and unit are the keys of the links; a code used twice turns red.", "코드와 단위가 연동의 열쇠입니다. 두 번 쓰인 코드는 빨간색."),
+      b("Sheets at the bottom: Material list, Recipes, Backups (the last two as the Excel export lists them, Edit… opens each). Code and unit are the keys of the links; a code used twice turns red.", "아래 시트 탭: Material list, Recipes, Backups(뒤의 둘은 Excel 내보내기와 같은 모양, Edit…로 열어 고침). 코드와 단위가 연동의 열쇠이고, 두 번 쓰인 코드는 빨간색."),
       b("Used: how many places use the material; click it for Where used before you change or delete it.", "Used: 자재를 쓰는 곳의 수. 바꾸거나 지우기 전에 눌러서 Where used를 확인합니다."),
       b("Status: In use, Under review or Obsolete. An obsolete material still used is flagged on the BOM and in the link check.", "Status: In use(사용 중), Under review(검토 중), Obsolete(단종). 단종 자재가 쓰이면 BOM과 연동 점검에 표시됩니다."),
       b("Replace…: use another material everywhere (BOM, recipes, PFD links, backups, the MB workbook when the units match); the old one becomes obsolete, replaced by the new one.", "Replace…: 다른 자재로 한 번에 교체(BOM·레시피·PFD 연결·대체 목록, 단위가 같으면 MB 워크북까지). 옛 자재는 단종·교체됨으로 표시됩니다."),
@@ -202,8 +202,8 @@ export const SCREENS: Record<Screen, { title: Bilingual; items: Bilingual[] }> =
       b("Import Excel/CSV shows a preview first, and also reads Recipes and Backups sheets. Export to Excel writes all three.", "Import Excel/CSV는 먼저 미리보기를 보여 주고 Recipes·Backups 시트도 읽습니다. Export to Excel은 세 시트를 씁니다."),
       b("Recipe: components per amount; Batch size and “per batch” for bags and filters; Try it shows what the BOM will count.", "Recipe: 기준량당 성분, Bag·필터는 Batch size와 “per batch”. Try it이 BOM 계산 결과를 미리 보여 줍니다."),
       b("Backups: alternates with a ratio. Delete also takes the material out of recipes and backup lists.", "Backups: 비율과 함께 대체 자재. Delete는 레시피·대체 목록에서도 함께 지웁니다."),
-      b("Purchasing (box above the table): supplier, part no. and pack size; the BOM totals then show whole packs to order.", "Purchasing(표 위 체크): 공급사, 품번, 포장 단위. BOM 합계에 주문할 포장 수(올림)가 나옵니다."),
-      b("Tick rows (box by the row number) to edit them together or delete them; ↶ takes it back.", "행 번호 옆 칸을 체크하면 여러 자재를 한 번에 고치거나 지울 수 있습니다. ↶로 되돌립니다."),
+      b("Purchasing (ribbon › Find and filter, with Find and Status): supplier, part no. and pack size; the BOM totals then show whole packs to order.", "Purchasing(리본 › Find and filter, 찾기·Status와 함께): 공급사, 품번, 포장 단위. BOM 합계에 주문할 포장 수(올림)가 나옵니다."),
+      b("Tick rows (the box after the row number) to edit them together or delete them; ↶ takes it back. Click a cell: the formula bar shows all of it, and a text cell can be edited there.", "행 번호 옆 칸을 체크하면 여러 자재를 한 번에 고치거나 지울 수 있습니다. ↶로 되돌립니다. 칸을 누르면 수식 입력줄에 전체 내용이 나오고, 글자 칸은 거기서도 고칩니다."),
     ],
   },
 };

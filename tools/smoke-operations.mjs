@@ -44,7 +44,7 @@ await page.waitForSelector(".excalidraw");
 
 // ---- the example's PROA steps -------------------------------------------------------------------------------------------
 await tab("Operations");
-check("Operations opens on PROA with its steps", /PROA\s+Protein A/.test(await text(".ops-head h2")) && /14 steps · 8 h 25 min · 37 actions/.test(await text(".ops-head .chip")), await text(".ops-head .chip"));
+check("Operations opens on PROA with its steps", /PROA · Protein A/.test(await text(".xl-info")) && /14 steps · 8 h 25 min · 37 actions/.test(await text(".xl-info")), await text(".xl-info"));
 const load = (await stepRow(3).innerText()).replace(/\n/g, " ");
 check("step 3: streams with names and MB value, actions as verbs", /ST-PROA-001\s*HCCF load · 1,900 L/.test(load) && /Close XV-102/.test(load) && /Open XV-101/.test(load), load.slice(0, 200));
 if (shot) await page.screenshot({ path: `${shot}-steps.png` });
@@ -75,7 +75,7 @@ await page.locator(".ops-nav-item", { hasText: "CEX" }).click();
 await wait(300);
 await page.getByLabel("Add steps from a template").selectOption("bindelute");
 await wait(400);
-check("CEX: 9 steps from the template", /9 steps/.test(await text(".ops-head .chip")));
+check("CEX: 9 steps from the template", /9 steps/.test(await text(".xl-info")));
 await page.getByLabel("Add a stream to step 3").selectOption("ST-CEX-002");
 await page.getByLabel("Add an action to step 3").selectOption("__new");
 await page.getByLabel("New tag for step 3").fill("XV-201");
@@ -87,12 +87,12 @@ const cexLoad = (await stepRow(3).innerText()).replace(/\n/g, " ");
 check("CEX step 3: ST-CEX-002 with its value, Open XV-201 (a new valve)", /ST-CEX-002\s*CEX load/.test(cexLoad) && /Open XV-201/.test(cexLoad), cexLoad.slice(0, 160));
 await page.getByLabel("Add steps from a template").selectOption("vi");
 await wait(300);
-check("a template adds after the steps already there", /13 steps/.test(await text(".ops-head .chip")));
+check("a template adds after the steps already there", /13 steps/.test(await text(".xl-info")));
 
 // ---- the equipment list: rename a tag, the PFD label follows ----------------------------------------------------------------
 await page.locator(".ops-nav-item", { hasText: "Equipment" }).click();
 await wait(300);
-check("equipment list: 17, C-101 drawn on PROA, XV-201 in CEX 3", /17 · 13 on the PFD/.test(await text(".ops-head .chip")) && /PROA drawing/.test(await page.locator("tr", { has: page.locator("input[value='C-101']") }).innerText()) && /CEX 3/.test(await page.locator("tr", { has: page.locator("input[value='XV-201']") }).innerText()));
+check("equipment list: 17, C-101 drawn on PROA, XV-201 in CEX 3", /17 equipment · 13 on the PFD/.test(await text(".xl-info")) && /PROA drawing/.test(await page.locator("tr", { has: page.locator("input[value='C-101']") }).innerText()) && /CEX 3/.test(await page.locator("tr", { has: page.locator("input[value='XV-201']") }).innerText()));
 const tagInput = await page.locator("input[aria-label='Tag'][value='C-101']").elementHandle();
 await tagInput.fill("C-1001");
 await tagInput.press("Enter");
@@ -131,7 +131,7 @@ check("T-101 shape: its steps in the panel", /T-101/.test(await page.getByLabel(
 if (shot) await page.screenshot({ path: `${shot}-pfd.png` });
 await page.getByRole("button", { name: "Show in Operations" }).click();
 await wait(700);
-check("Show in Operations: the PROA state table with T-101", /PROA/.test(await text(".ops-head h2")) && await page.locator("tr[data-tag='T-101'].flash").count() === 1);
+check("Show in Operations: the PROA state table with T-101", /PROA ·/.test(await text(".xl-info")) && await page.locator("tr[data-tag='T-101'].flash").count() === 1);
 
 // ---- N4.14: the order of actions in a step, and the step view on the PFD ---------------------------------------------------------
 await page.getByRole("tab", { name: "Steps & actions" }).click();

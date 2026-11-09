@@ -22,6 +22,8 @@ import { RowMenu } from "../ui/RowMenu";
 import { readTables, writeWorkbook } from "../xlsx/workbook";
 import { BackupsDialog, RecipeDialog } from "./MaterialRefs";
 import { HeadRow, useColumns, type Head } from "../ui/resize";
+import { Workbook } from "../ui/Workbook";
+import type { ReactNode } from "react";
 
 type Field = "code" | "name" | "unit" | "category" | "spec" | "note" | "supplier" | "partNo";
 
@@ -104,6 +106,7 @@ export function MaterialsView(props: {
     props.onFocusDone?.();
     if (!m) return;
     setQuery("");
+    setSheet("materials");
     if (props.focus.open) setEditing({ id: m.id, what: props.focus.open });
     setTimeout(() => {
       const tr = document.querySelector(`tr[data-code="${CSS.escape(m.code)}"]`);
@@ -210,66 +213,93 @@ export function MaterialsView(props: {
   const cols = useColumns(buying ? "materials+buying" : "materials", heads);
   const replace = (next: Material) => onChange(materials.map((m) => (m.id === next.id ? next : m)));
 
+  const [sheet, setSheetState] = useState<"materials" | "recipes" | "backups">(() => { try { const v = localStorage.getItem("pcs.materials.sheet"); return v === "recipes" || v === "backups" ? v : "materials"; } catch { return "materials"; } });
+  const setSheet = (v: typeof sheet) => { setSheetState(v); try { localStorage.setItem("pcs.materials.sheet", v); } catch { /* not remembered */ } };
+  const recipes = recipeRows(materials);
+  const backups = backupRows(materials);
+  const recipeCount = materials.filter((m) => m.recipe?.components.length).length;
+  const backupCount = materials.filter((m) => m.backups?.length).length;
+  const openRef = (code: unknown, what: "recipe" | "backups") => { const m = materials.find((x) => x.code === code); if (m) setEditing({ id: m.id, what }); };
+
   return (
-    <div className="page">
-      <div className="page-inner wide">
-        <div className="page-head">
-          <div>
-            <h1>Materials</h1>
-            <PageIntro id="materials" lead="The material list used by the BOM and by MB workbooks (MatCode in PCS_LINK).">Codes must be unique in the project, and every quantity is counted in the unit given here.</PageIntro>
+    <div className="page wb-page">
+      <div className="page-head">
+        <div>
+          <h1>Materials</h1>
+          <PageIntro id="materials" lead="The material list used by the BOM and by MB workbooks (MatCode in PCS_LINK).">Codes must be unique in the project, and every quantity is counted in the unit given here. Recipes and Backups (sheets at the bottom) list what each material is made of and its alternates; edit them with the Recipe and Backup buttons.</PageIntro>
+        </div>
+      </div>
+      <ScreenRibbon screen="materials">
+        <RibbonGroup label="Materials">
+          <RibbonButton big primary icon="add" onClick={add} title="A new row at the end of the list" label="Add material" />
+          {missingSamples && (
+            <RibbonButton big icon="samples" onClick={addSamples}
+              title="This list uses the sample codes: add the samples it does not have yet (lines, transfer panel, buffer chemicals …) and the sample recipes and backups"
+              label={missingCount ? `Add ${missingCount} missing sample(s)` : "Add sample recipes and backups"} />
+          )}
+        </RibbonGroup>
+        <RibbonGroup label="Find and filter">
+          <div className="rfields">
+            <label className="rfield"><span>Find</span>
+              <input className="search" type="search" placeholder="Code, name, category, supplier" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search materials" />
+            </label>
+            <label className="rfield"><span>Status</span>
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} aria-label="Status filter">
+                <option value="">All statuses</option>
+                <option value="active">In use</option>
+                <option value="review">Under review</option>
+                <option value="obsolete">Obsolete</option>
+              </select>
+            </label>
           </div>
-          <div className="spacer" />
-          <div className="toolbar">
-            <input className="search" placeholder="Search code, name, category, supplier" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search materials" />
-            <label className="check" title="Supplier, part (catalogue) number and pack size; the BOM totals then say how many packs to order">
+          <div className="rstack">
+            <label className="rcheck" title="Supplier, part (catalogue) number and pack size; the BOM totals then say how many packs to order">
               <input type="checkbox" checked={buying} onChange={(e) => setBuying(e.target.checked)} /> <span>Purchasing</span>
             </label>
-            <select className="search" style={{ width: "auto" }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} aria-label="Status filter">
-              <option value="">All statuses</option>
-              <option value="active">In use</option>
-              <option value="review">Under review</option>
-              <option value="obsolete">Obsolete</option>
-            </select>
+            {(query || statusFilter) && <button className="rbtn" onClick={() => { setQuery(""); setStatusFilter(""); }} title="Show every material">Clear filter</button>}
           </div>
-          <ScreenRibbon screen="materials">
-            <RibbonGroup label="Materials">
-              <RibbonButton big primary icon="add" onClick={add} title="A new row at the top of the list" label="Add material" />
-              {missingSamples && (
-                <RibbonButton big icon="samples" onClick={addSamples}
-                  title="This list uses the sample codes: add the samples it does not have yet (lines, transfer panel, buffer chemicals …) and the sample recipes and backups"
-                  label={missingCount ? `Add ${missingCount} missing sample(s)` : "Add sample recipes and backups"} />
-              )}
-            </RibbonGroup>
-            <RibbonGroup label="Excel">
-              <RibbonButton big icon="import" onClick={importFile} title="Materials, Recipes and Backups sheets, or a CSV file" label="Import Excel/CSV" />
-              <RibbonButton big icon="excel" onClick={exportFile} disabled={!materials.length} title="The material list as an Excel workbook" label="Export to Excel" />
-            </RibbonGroup>
-          </ScreenRibbon>
-        </div>
+        </RibbonGroup>
+        <RibbonGroup label="Excel">
+          <RibbonButton big icon="import" onClick={importFile} title="Materials, Recipes and Backups sheets, or a CSV file" label="Import Excel/CSV" />
+          <RibbonButton big icon="excel" onClick={exportFile} disabled={!materials.length} title="The material list as an Excel workbook" label="Export to Excel" />
+        </RibbonGroup>
+      </ScreenRibbon>
 
-        {pendingMb.length > 0 && (
-          <div className="notice warn notice-row" role="status">
-            <span>
-              Code changed: {pendingMb.map(([a, b]) => `${a} → ${b}`).join(", ")}. The mass balance still says {pendingMb.map(([a]) => a).join(", ")}
-              {project.mb.current ? ` (${mbUsesOf(project, pendingMb.map(([a]) => a))} applied row(s))` : ""}: those values are left out of the BOM until the workbook uses the new code.
-            </span>
-            <span className="spacer" />
-            <button className="btn small primary" disabled={busy || !props.transform} onClick={carryRenames}>{busy ? "Updating…" : "Update the MB workbook too"}</button>
-            <button className="btn small ghost" onClick={() => setRenames(new Map())}>Not now</button>
+      <Workbook
+        bar={(pendingMb.length > 0 || picked.size > 0) ? (
+          <div className="wb-bar">
+            {pendingMb.length > 0 && (
+              <div className="notice warn notice-row" role="status">
+                <span>
+                  Code changed: {pendingMb.map(([a, b]) => `${a} → ${b}`).join(", ")}. The mass balance still says {pendingMb.map(([a]) => a).join(", ")}
+                  {project.mb.current ? ` (${mbUsesOf(project, pendingMb.map(([a]) => a))} applied row(s))` : ""}: those values are left out of the BOM until the workbook uses the new code.
+                </span>
+                <span className="spacer" />
+                <button className="btn small primary" disabled={busy || !props.transform} onClick={carryRenames}>{busy ? "Updating…" : "Update the MB workbook too"}</button>
+                <button className="btn small ghost" onClick={() => setRenames(new Map())}>Not now</button>
+              </div>
+            )}
+            {picked.size > 0 && (
+              <div className="notice notice-row bulk-bar" role="status">
+                <span><b>{picked.size}</b> selected</span>
+                <button className="btn small primary" onClick={() => setBulkOpen(true)}>Edit selected…</button>
+                <button className="btn small danger" onClick={removeMany}>Delete selected</button>
+                <span className="spacer" />
+                <button className="btn small ghost" onClick={() => setSelected(new Set())}>Clear selection</button>
+              </div>
+            )}
           </div>
-        )}
-
-        {picked.size > 0 && (
-          <div className="notice notice-row bulk-bar" role="status">
-            <span><b>{picked.size}</b> selected</span>
-            <button className="btn small primary" onClick={() => setBulkOpen(true)}>Edit selected…</button>
-            <button className="btn small danger" onClick={removeMany}>Delete selected</button>
-            <span className="spacer" />
-            <button className="btn small ghost" onClick={() => setSelected(new Set())}>Clear selection</button>
-          </div>
-        )}
-
-        <div className="panel">
+        ) : undefined}
+        tabs={[
+          { id: "materials", label: `Material list (${materials.length})`, ...(dupCodes.size ? { dot: "err" as const, title: `${dupCodes.size} duplicate code(s)` } : {}) },
+          { id: "recipes", label: `Recipes (${recipeCount})`, title: "Materials made in-house and what they are made of" },
+          { id: "backups", label: `Backups (${backupCount})`, title: "Alternate materials" },
+        ]}
+        active={sheet}
+        onPick={(id) => setSheet(id as typeof sheet)}
+        info={sheet === "materials" && materials.length > 0 ? <>{shown.length !== materials.length ? `${shown.length} of ${materials.length} materials shown` : `${materials.length} materials`}{dupCodes.size ? ` · ${dupCodes.size} duplicate code(s)` : ""}</> : undefined}
+      >
+        <section aria-label="Material list" hidden={sheet !== "materials"}>
           {materials.length === 0 ? (
             <div className="empty">
               <strong>No materials yet</strong>
@@ -290,8 +320,8 @@ export function MaterialsView(props: {
                     const badUnit = !m.unit.trim();
                     return (
                       <tr key={m.id} className={badCode || badUnit ? "row-bad" : ""} data-code={m.code}>
-                        <td className="idx"><label className="row-pick"><input type="checkbox" aria-label={`Select ${m.code}`} checked={picked.has(m.id)}
-                          onChange={(e) => { const n = new Set(picked); if (e.target.checked) n.add(m.id); else n.delete(m.id); setSelected(n); }} /><span>{materials.indexOf(m) + 1}</span></label></td>
+                        <td className="idx"><label className="row-pick" title={`Material ${materials.indexOf(m) + 1}`}><input type="checkbox" aria-label={`Select ${m.code}`} checked={picked.has(m.id)}
+                          onChange={(e) => { const n = new Set(picked); if (e.target.checked) n.add(m.id); else n.delete(m.id); setSelected(n); }} /></label></td>
                         <td><input className={`cell-input mono${badCode ? " bad" : ""}`} value={m.code} onChange={(e) => update(m.id, "code", e.target.value)} aria-label="Code" title={badCode ? (m.code ? "Duplicate code" : "Code is empty") : undefined}
                           onFocus={() => setCodeAtFocus({ id: m.id, code: m.code })}
                           onBlur={() => { if (codeAtFocus?.id === m.id && codeAtFocus.code && m.code && codeAtFocus.code !== m.code && !badCode) noteRename(codeAtFocus.code, m.code); setCodeAtFocus(null); }} /></td>
@@ -344,14 +374,18 @@ export function MaterialsView(props: {
               <datalist id="units">{COMMON_UNITS.map((u) => <option key={u} value={u} />)}</datalist>
             </div>
           )}
-        </div>
-        {materials.length > 0 && (
-          <p className="hint" style={{ margin: 0, color: "var(--muted)", fontSize: "var(--fs-sm)" }}>
-            {materials.length} materials{shown.length !== materials.length ? `, ${shown.length} shown` : ""}
-            {dupCodes.size ? ` · ${dupCodes.size} duplicate code(s)` : ""}
-          </p>
-        )}
-      </div>
+        </section>
+        {sheet === "recipes" && <section aria-label="Recipes">
+          {recipes.length === 0 ? <p className="hint xl-empty">No recipes yet. A material made in-house (a buffer, a medium) gets its recipe with the <b>+ Recipe</b> button on the Materials sheet.</p>
+            : <SheetTable header={RECIPE_EXPORT_HEADER} rows={recipes} widths={[12, 34, 7, 6, 14, 28, 9, 12, 9, 9, 12, 36]} numeric={[2, 6, 9]} mono={[0, 4]} label="Recipes"
+                action={(row, i) => (i === 0 || recipes[i - 1][0] !== row[0]) ? <button className="btn small" onClick={() => openRef(row[0], "recipe")} aria-label={`${row[0]}: edit its recipe`}>Edit…</button> : null} />}
+        </section>}
+        {sheet === "backups" && <section aria-label="Backups">
+          {backups.length === 0 ? <p className="hint xl-empty">No backups yet. An alternate material is added with the <b>+ Backup</b> button on the Materials sheet.</p>
+            : <SheetTable header={BACKUP_EXPORT_HEADER} rows={backups} widths={[12, 36, 12, 36, 7, 30]} numeric={[4]} mono={[0, 2]} label="Backups"
+                action={(row, i) => (i === 0 || backups[i - 1][0] !== row[0]) ? <button className="btn small" onClick={() => openRef(row[0], "backups")} aria-label={`${row[0]}: edit its backups`}>Edit…</button> : null} />}
+        </section>}
+      </Workbook>
 
       {plan && (
         <ImportDialog
@@ -500,13 +534,34 @@ function PackInput(props: { value?: number; unit: string; code: string; onChange
 
 const MATERIAL_HEADS: Head[] = [
   // Widths that fit a 1366 px laptop without sideways scrolling, the name getting the most room (N5.1).
-  { id: "row", width: 56, ariaLabel: "Row" }, { id: "code", label: "Code", width: 112 }, { id: "name", label: "Name", min: 240 }, { id: "unit", label: "Unit", width: 64 },
-  { id: "category", label: "Category", width: 104 }, { id: "spec", label: "Spec", width: 120 },
-  { id: "overage", label: "Overage %", width: 84, title: "Default overage for BOM lines of this material" }, { id: "note", label: "Note", width: 100 },
-  { id: "refs", label: "Recipe · Backups", width: 190, title: "Recipe: the material is made in-house from components (a buffer, a medium …). Backups: alternate materials." },
-  { id: "status", label: "Status", width: 128, title: "In use, Under review, or Obsolete (the BOM asks to replace an obsolete material)" },
-  { id: "bom", label: "Used", width: 64, title: "Places that use the material: click for Where used" }, { id: "menu", width: 52, ariaLabel: "More" },
+  { id: "row", width: 40, ariaLabel: "Select", className: "idx" }, { id: "code", label: "Code", width: 104 }, { id: "name", label: "Name", min: 220 }, { id: "unit", label: "Unit", width: 56 },
+  { id: "category", label: "Category", width: 100 }, { id: "spec", label: "Spec", width: 110 },
+  { id: "overage", label: "Overage %", width: 80, title: "Default overage for BOM lines of this material" }, { id: "note", label: "Note", width: 90 },
+  { id: "refs", label: "Recipe · Backups", width: 176, title: "Recipe: the material is made in-house from components (a buffer, a medium …). Backups: alternate materials." },
+  { id: "status", label: "Status", width: 120, title: "In use, Under review, or Obsolete (the BOM asks to replace an obsolete material)" },
+  { id: "bom", label: "Used", width: 56, title: "Places that use the material: click for Where used" }, { id: "menu", width: 52, ariaLabel: "More" },
 ];
+
+/** A read-only sheet of rows as the Excel export has them, with an action on the first row of each material. */
+function SheetTable(props: { header: string[]; rows: (string | number | undefined)[][]; widths: number[]; numeric: number[]; mono: number[]; label: string; action: (row: (string | number | undefined)[], i: number) => ReactNode }) {
+  return (
+    <div className="table-wrap">
+      <table className="grid sheet-fixed" aria-label={props.label}>
+        {/* the column widths of the Excel export, in characters */}
+        <colgroup>{props.widths.map((w, j) => <col key={j} style={{ width: Math.round(w * 7.2 + 12) }} />)}<col style={{ width: 76 }} /></colgroup>
+        <thead><tr>{props.header.map((h, j) => <th key={h} className={props.numeric.includes(j) ? "num" : undefined}>{h}</th>)}<th aria-label="Edit" /></tr></thead>
+        <tbody>
+          {props.rows.map((r, i) => (
+            <tr key={i}>
+              {r.map((v, j) => <td key={j} className={[props.numeric.includes(j) ? "num" : "", props.mono.includes(j) ? "mono" : ""].join(" ").trim() || undefined}>{typeof v === "number" ? v.toLocaleString("en-US", { maximumFractionDigits: 6 }) : v ?? ""}</td>)}
+              <td>{props.action(r, i)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 const RECIPE_SHEET = /^(recipes?|레시피|제조\s*레시피|조성)$/i;
 const BACKUP_SHEET = /^(backups?|alternates?|대체\s*자재|백업\s*자재)$/i;

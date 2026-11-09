@@ -238,7 +238,7 @@ export default function App() {
       const k = e.key.toLowerCase();
       // Ctrl+F on a screen with a search box: that box (as Find in Office); elsewhere the browser's own find.
       if ((e.ctrlKey || e.metaKey) && k === "f" && !e.altKey && !e.shiftKey && tabRef.current !== "pfd" && !document.querySelector(".dialog")) {
-        const box = [...document.querySelectorAll<HTMLInputElement>(".screen-layer input.search[type='search'], .screen-layer input.search[aria-label^='Search']")].find((x) => x.offsetParent !== null);
+        const box = [...document.querySelectorAll<HTMLInputElement>(".ribbon input.search, .screen-layer input.search[type='search'], .screen-layer input.search[aria-label^='Search']")].find((x) => x.offsetParent !== null);
         if (box) { e.preventDefault(); box.focus(); box.select(); return; }
       }
       // Ctrl+Z / Ctrl+Y outside the drawing and outside text fields (they keep their own undo while typing).

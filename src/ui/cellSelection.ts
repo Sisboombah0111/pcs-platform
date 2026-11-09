@@ -45,6 +45,12 @@ function posOf(td: HTMLTableCellElement): Pos | null {
   return row < 0 ? null : { table, row, col };
 }
 
+/** The active cell, for the formula bar (Workbook.tsx): sent on every change of the selection. */
+export const CELL_EVENT = "pcs:cell";
+function announce(td: HTMLTableCellElement | null) {
+  window.dispatchEvent(new CustomEvent<HTMLTableCellElement | null>(CELL_EVENT, { detail: td }));
+}
+
 export function useCellSelection(root: HTMLElement | null, resetKey: unknown, onCopied?: (rows: number, cols: number) => void): SelectionStats | null {
   const [stats, setStats] = useState<SelectionStats | null>(null);
   const sel = useRef<{ anchor: Pos; focus: Pos } | null>(null);
@@ -58,6 +64,7 @@ export function useCellSelection(root: HTMLElement | null, resetKey: unknown, on
       painted.current = [];
       sel.current = null;
       setStats(null);
+      announce(null);
     };
     clear();
     if (!root) return;
@@ -81,6 +88,7 @@ export function useCellSelection(root: HTMLElement | null, resetKey: unknown, on
       const cur = bodyRows(s.anchor.table)[s.anchor.row] && columnsOf(bodyRows(s.anchor.table)[s.anchor.row]).find((x) => x.from <= s.anchor.col && x.to >= s.anchor.col)?.td;
       cur?.classList.add("cell-cur");
       painted.current = cur ? [...flat, cur] : flat;
+      announce(cur ?? null);
       let count = 0, numbers = 0, sum = 0;
       for (const td of flat) {
         const t = cellText(td);
@@ -96,10 +104,19 @@ export function useCellSelection(root: HTMLElement | null, resetKey: unknown, on
       if (e.button !== 0) return;
       const target = e.target as HTMLElement;
       if (!root.contains(target)) return;
-      if (target.closest(".dialog, .gc-overlay, .scrim")) return;
+      if (target.closest(".dialog, .gc-overlay, .scrim, .xl-fbar")) return; // the formula bar edits the active cell
       const td = target.closest("td") as HTMLTableCellElement | null;
       const pos = td ? posOf(td) : null;
       if (!pos) { if (sel.current) clear(); return; }
+      // The row header (a sheet's row number, or the select box of a Materials row): the whole row, as in Excel.
+      if (td && (td.classList.contains("rn") || (td.classList.contains("idx") && (e.target as HTMLElement).tagName !== "INPUT")) && !e.shiftKey) {
+        const tr = td.parentElement as HTMLTableRowElement;
+        const cols = columnsOf(tr);
+        const first = cols.find((c) => !c.td.classList.contains("rn") && !c.td.classList.contains("idx")) ?? cols[0];
+        sel.current = { anchor: { ...pos, col: first.from }, focus: { ...pos, col: cols[cols.length - 1].to } };
+        paint();
+        return;
+      }
       if (e.shiftKey && sel.current && sel.current.anchor.table === pos.table) {
         sel.current = { anchor: sel.current.anchor, focus: pos };
         window.getSelection()?.removeAllRanges();
@@ -183,7 +200,13 @@ export function useCellSelection(root: HTMLElement | null, resetKey: unknown, on
         const ed = editorOf(cur);
         if (e.key === "F2" && ed) { e.preventDefault(); ed.focus(); if (textEditor(ed)) ed.setSelectionRange(ed.value.length, ed.value.length); return; }
         // Typing on a selected cell starts editing it with what is typed, as in Excel.
-        if (e.key.length === 1 && textEditor(ed)) { ed.focus(); ed.select(); }
+        if (e.key.length === 1 && textEditor(ed)) {
+          e.preventDefault();
+          ed.focus();
+          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(ed, e.key);
+          ed.dispatchEvent(new Event("input", { bubbles: true }));
+          ed.setSelectionRange(1, 1);
+        }
         return;
       }
       // In a cell's text field: ↑ ↓ go to the cell above or below (into its field), Enter commits and goes down.

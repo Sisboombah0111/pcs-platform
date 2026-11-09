@@ -85,7 +85,7 @@ check("BOM lines = hand calculation", JSON.stringify(sorted(t)) === JSON.stringi
 }), JSON.stringify(t));
 let tot = await totals();
 check("totals = hand calculation", tot["MAT-0001"].join() === "1.645,8.225" && tot["MAT-0002"].join() === "0.62,3.1" && tot["MAT-0017"].join() === "2,2" && tot["MAT-0018"].join() === "1,1", JSON.stringify(tot));
-check("complete, nothing to check", /Complete/.test(await page.locator(".page-head").innerText()));
+check("complete, nothing to check", /Complete/.test(await page.locator(".xl-info").innerText()));
 if (shot) await page.screenshot({ path: `${shot}-bom.png`, fullPage: true });
 
 // Overage: 10 % on MAT-0001 in the material list, 5 % on one line.

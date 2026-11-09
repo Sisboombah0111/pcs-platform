@@ -15,6 +15,7 @@ import { downloadBlob, pickFile } from "../storage/files";
 import { Dialog } from "../ui/Dialog";
 import { RowMenu } from "../ui/RowMenu";
 import { HeadRow, useColumns, type Head } from "../ui/resize";
+import { Workbook } from "../ui/Workbook";
 import { readTables, writeWorkbook } from "../xlsx/workbook";
 import type { GoPlace } from "./WhereUsed";
 
@@ -110,61 +111,54 @@ export function OperationsView(props: {
   const stepCount = Object.values(project.operations).reduce((n, s) => n + s.length, 0);
   const actionCount = Object.values(project.operations).reduce((n, s) => n + s.reduce((m, x) => m + x.actions.length, 0), 0);
 
-  return (
-    <div className="page">
-      <div className="page-inner wide">
-        <div className="page-head">
-          <div>
-            <h1>Operations</h1>
-            <PageIntro id="operations" lead="The steps of each unit operation and what is done to the equipment in each step.">
-              <b>Open or close</b> a valve, <b>start or stop</b> a pump or an agitator. Give the PFD shapes their tags (select a shape › <b>Equipment tag</b>) or add equipment here; a step names the <b>Stream IDs</b> that flow in it.</PageIntro>
-          </div>
-          <div className="spacer" />
-          <div className="toolbar">
-            <span className="chip">{stepCount} steps · {actionCount} actions · {project.equipment.length} equipment</span>
-          </div>
-          <ScreenRibbon screen="operations">
-            <RibbonGroup label="Excel">
-              <RibbonButton big icon="import" onClick={importExcel} title="Equipment, Steps, Actions and States sheets (as exported, or filled in by hand)" label="Import from Excel…" />
-              <RibbonButton big primary icon="excel" onClick={exportExcel} disabled={!stepCount && !project.equipment.length} title="Equipment, steps, actions and the state table as an Excel workbook" label="Export to Excel" />
-            </RibbonGroup>
-          </ScreenRibbon>
-        </div>
+  const curSteps = current ? project.operations[current.id] ?? [] : [];
+  const curTimes = startTimes(curSteps);
+  const curActions = curSteps.reduce((n, x) => n + x.actions.length, 0);
 
-        {uos.length === 0 ? (
-          <div className="notice">Unit operations come from the PFD: add them on the process map first (PFD › + Unit operation). Their steps are written here.</div>
-        ) : (
-          <div className="ops-layout">
-            <nav className="ops-nav panel" aria-label="Unit operations">
-              <div className="ops-nav-head">Unit operations</div>
-              {uos.map((u) => {
-                const n = (project.operations[u.id] ?? []).length;
-                return (
-                  <button key={u.id} className={`ops-nav-item${sel === u.id ? " on" : ""}`} aria-current={sel === u.id ? "page" : undefined} onClick={() => setSel(u.id)}>
-                    <span className="mono">{u.code}</span><span className="ops-nav-name">{u.name}</span>
-                    <span className={`chip${n ? "" : " faint"}`}>{n ? `${n} step${n > 1 ? "s" : ""}` : "none"}</span>
-                  </button>
-                );
-              })}
-              <div className="ops-nav-sep" />
-              <button className={`ops-nav-item${sel === EQUIPMENT || !current ? " on" : ""}`} onClick={() => setSel(EQUIPMENT)}>
-                <span>Equipment</span><span className="ops-nav-name" /><span className="chip">{project.equipment.length}</span>
-              </button>
-            </nav>
-            <div className="ops-main">
-              {current ? (
-                <UoOperations
-                  key={current.id} project={project} uo={current} uos={uos} view={view} setView={setView} flash={flash} shapes={shapes}
-                  setSteps={(fn) => setSteps(current.id, fn)} setEquipment={setEquipment} addEquipment={addEquipment} go={props.go} confirm={props.confirm} toast={toast}
-                />
-              ) : (
-                <EquipmentList project={project} uos={uos} shapes={shapes} flash={flash} setEquipment={setEquipment} update={update} addEquipment={addEquipment}
-                  go={props.go} confirm={props.confirm} showUse={showEquipmentRow} />
-              )}
-            </div>
-          </div>
-        )}
+  return (
+    <div className="page wb-page">
+      <div className="page-head">
+        <div>
+          <h1>Operations</h1>
+          <PageIntro id="operations" lead="The steps of each unit operation and what is done to the equipment in each step.">
+            <b>Open or close</b> a valve, <b>start or stop</b> a pump or an agitator. Give the PFD shapes their tags (select a shape › <b>Equipment tag</b>) or add equipment here; a step names the <b>Stream IDs</b> that flow in it. One sheet per unit operation, and the Equipment sheet, at the bottom.</PageIntro>
+        </div>
       </div>
+      <ScreenRibbon screen="operations">
+        <RibbonGroup label="Excel">
+          <RibbonButton big icon="import" onClick={importExcel} title="Equipment, Steps, Actions and States sheets (as exported, or filled in by hand)" label="Import from Excel…" />
+          <RibbonButton big primary icon="excel" onClick={exportExcel} disabled={!stepCount && !project.equipment.length} title="Equipment, steps, actions and the state table as an Excel workbook" label="Export to Excel" />
+        </RibbonGroup>
+      </ScreenRibbon>
+
+      {uos.length === 0 ? (
+        <div className="notice">Unit operations come from the PFD: add them on the process map first (PFD › + Unit operation). Their steps are written here.</div>
+      ) : (
+        <Workbook
+          tabs={[
+            ...uos.map((u) => {
+              const n = (project.operations[u.id] ?? []).length;
+              return { id: u.id, label: `${u.code}${n ? ` (${n})` : ""}`, title: `${u.code} · ${u.name}: ${n ? `${n} step${n > 1 ? "s" : ""}` : "no steps yet"}`, className: "ops-nav-item" };
+            }),
+            { id: EQUIPMENT, label: `Equipment (${project.equipment.length})`, title: "Every valve, pump, agitator … with its tag", className: "ops-nav-item" },
+          ]}
+          active={current ? current.id : EQUIPMENT}
+          onPick={setSel}
+          info={current
+            ? <>{current.code} · {current.name} · {curSteps.length} steps{curTimes.total ? ` · ${durationText(curTimes.total)}` : ""}{curTimes.missing && curSteps.length ? ` (${curTimes.missing} without minutes)` : ""} · {curActions} actions</>
+            : <>{project.equipment.length} equipment · {project.equipment.filter((e) => shapes.has(e.id)).length} on the PFD · {stepCount} steps · {actionCount} actions</>}
+        >
+          {current ? (
+            <UoOperations
+              key={current.id} project={project} uo={current} uos={uos} view={view} setView={setView} flash={flash} shapes={shapes}
+              setSteps={(fn) => setSteps(current.id, fn)} setEquipment={setEquipment} addEquipment={addEquipment} go={props.go} confirm={props.confirm} toast={toast}
+            />
+          ) : (
+            <EquipmentList project={project} uos={uos} shapes={shapes} flash={flash} setEquipment={setEquipment} update={update} addEquipment={addEquipment}
+              go={props.go} confirm={props.confirm} showUse={showEquipmentRow} />
+          )}
+        </Workbook>
+      )}
       {importing && (
         <ImportOpsDialog fileName={importing.fileName} plan={importing.plan} onCancel={() => setImporting(null)}
           onApply={() => {
@@ -189,8 +183,6 @@ function UoOperations(props: {
 }) {
   const { project, uo, setSteps } = props;
   const steps = project.operations[uo.id] ?? [];
-  const { total, missing } = startTimes(steps);
-  const actions = steps.reduce((n, s) => n + s.actions.length, 0);
   const others = props.uos.filter((u) => u.id !== uo.id && (project.operations[u.id] ?? []).length);
 
   const addTemplate = (id: string) => {
@@ -206,30 +198,37 @@ function UoOperations(props: {
   };
 
   return (
-    <div className="ops-uo">
-      <div className="ops-head">
-        <h2><span className="mono">{uo.code}</span> {uo.name}</h2>
-        <span className="chip">{steps.length} steps{total ? ` · ${durationText(total)}` : ""}{missing && steps.length ? ` (${missing} without minutes)` : ""} · {actions} actions</span>
-        <span className="spacer" />
-        {steps.length > 0 && props.go && <button className="btn small" onClick={() => props.go!({ kind: "step", uoId: uo.id, index: 0 })} title="The drawing with the step view: valves open or closed, pumps running, the streams of each step">Show on PFD</button>}
-        <div className="seg" role="tablist" aria-label="View">
-          <button role="tab" aria-selected={props.view === "steps"} className={props.view === "steps" ? "on" : ""} onClick={() => props.setView("steps")}>Steps & actions</button>
-          <button role="tab" aria-selected={props.view === "table"} className={props.view === "table" ? "on" : ""} onClick={() => props.setView("table")}>State table</button>
-        </div>
-      </div>
-      <div className="ops-tools">
-        <button className="btn small primary" onClick={() => setSteps((s) => [...s, newStep(`Step ${s.length + 1}`)])}>+ Step</button>
-        <select className="search ops-select" value="" onChange={(e) => addTemplate(e.target.value)} aria-label="Add steps from a template">
-          <option value="">Add steps from a template…</option>
-          {TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.steps.length} steps)</option>)}
-        </select>
-        {others.length > 0 && (
-          <select className="search ops-select" value="" onChange={(e) => copyFrom(e.target.value)} aria-label="Copy steps from another unit operation">
-            <option value="">Copy steps from…</option>
-            {others.map((u) => <option key={u.id} value={u.id}>{u.code} · {u.name} ({(project.operations[u.id] ?? []).length} steps)</option>)}
-          </select>
-        )}
-      </div>
+    <div className="ops-uo" aria-label={`${uo.code} steps`}>
+      <ScreenRibbon screen="operations">
+        <RibbonGroup label={`Steps · ${uo.code}`}>
+          <RibbonButton big primary icon="add" onClick={() => setSteps((s) => [...s, newStep(`Step ${s.length + 1}`)])} title="A new step at the end" label="+ Step" />
+          <div className="rfields">
+            <label className="rfield"><span>Template</span>
+              <select value="" onChange={(e) => addTemplate(e.target.value)} aria-label="Add steps from a template">
+                <option value="">Add steps from a template…</option>
+                {TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.steps.length} steps)</option>)}
+              </select>
+            </label>
+            {others.length > 0 && (
+              <label className="rfield"><span>Copy from</span>
+                <select value="" onChange={(e) => copyFrom(e.target.value)} aria-label="Copy steps from another unit operation">
+                  <option value="">Copy steps from…</option>
+                  {others.map((u) => <option key={u.id} value={u.id}>{u.code} · {u.name} ({(project.operations[u.id] ?? []).length} steps)</option>)}
+                </select>
+              </label>
+            )}
+          </div>
+        </RibbonGroup>
+        <RibbonGroup label="View">
+          <div className="rstack">
+            <div className="seg" role="tablist" aria-label="View">
+              <button role="tab" aria-selected={props.view === "steps"} className={props.view === "steps" ? "on" : ""} onClick={() => props.setView("steps")}>Steps & actions</button>
+              <button role="tab" aria-selected={props.view === "table"} className={props.view === "table" ? "on" : ""} onClick={() => props.setView("table")}>State table</button>
+            </div>
+            {steps.length > 0 && props.go && <RibbonButton icon="fit" onClick={() => props.go!({ kind: "step", uoId: uo.id, index: 0 })} title="The drawing with the step view: valves open or closed, pumps running, the streams of each step" label="Show on PFD" />}
+          </div>
+        </RibbonGroup>
+      </ScreenRibbon>
       {steps.length === 0 ? (
         <div className="notice">No steps yet. Add a step, or start from a template (Chromatography, UF/DF, Buffer preparation …) and change it to fit.</div>
       ) : props.view === "steps" ? (
@@ -549,17 +548,22 @@ function EquipmentList(props: {
   const add = () => { if (props.addEquipment(tag, type || typeForTag(tag), uoId || undefined)) { setTag(""); setType(""); } };
 
   return (
-    <div className="ops-uo">
-      <div className="ops-head">
-        <h2>Equipment</h2>
-        <span className="chip">{project.equipment.length} · {project.equipment.filter((e) => shapes.has(e.id)).length} on the PFD</span>
-        <span className="spacer" />
-        <input className="search" placeholder="Search tag, name, note" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search equipment" />
-        <select className="search ops-select" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as EquipmentType | "")} aria-label="Type filter">
-          <option value="">All types</option>
-          {EQUIPMENT_TYPES.map((t) => <option key={t} value={t}>{TYPE_INFO[t].label}</option>)}
-        </select>
-      </div>
+    <div className="ops-uo" aria-label="Equipment">
+      <ScreenRibbon screen="operations">
+        <RibbonGroup label="Find and filter">
+          <div className="rfields">
+            <label className="rfield"><span>Find</span>
+              <input className="search" type="search" placeholder="Tag, name, note" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search equipment" />
+            </label>
+            <label className="rfield"><span>Type</span>
+              <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as EquipmentType | "")} aria-label="Type filter">
+                <option value="">All types</option>
+                {EQUIPMENT_TYPES.map((t) => <option key={t} value={t}>{TYPE_INFO[t].label}</option>)}
+              </select>
+            </label>
+          </div>
+        </RibbonGroup>
+      </ScreenRibbon>
       <div className="table-wrap panel">
         <table className="grid ops-eq" ref={cols.tableRef} style={cols.tableStyle}>
           {cols.colgroup}

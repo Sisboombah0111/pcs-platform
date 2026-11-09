@@ -760,8 +760,8 @@ table.grid.xl thead tr.xl-letters th.corner { z-index: 4; }
 table.grid td.chg { background: #ffeb9c; }
 /* fields in the ribbon (Mass Balance › Apply) */
 .rfields { display: grid; gap: 3px; align-content: start; padding: 2px 6px; }
-.rfield { display: grid; grid-template-columns: 72px auto; white-space: nowrap; align-items: center; gap: 6px; font-size: var(--fs-2xs); color: var(--muted); }
-.rfield select, .rfield input { font-size: var(--fs-2xs); height: 24px; border: 1px solid var(--control); border-radius: 2px; background: var(--surface); padding: 0 4px; width: 190px; color: var(--ink); }
+.rfield { display: grid; grid-template-columns: minmax(48px, auto) auto; white-space: nowrap; align-items: center; gap: 6px; font-size: var(--fs-2xs); color: var(--muted); }
+.rfield select, .rfield input { font-size: var(--fs-2xs); height: 24px; border: 1px solid var(--control); border-radius: 2px; background: var(--surface); padding: 0 4px; width: 172px; color: var(--ink); }
 .ribbon.compact .rfields { grid-auto-flow: column; padding: 0 4px; align-items: center; }
 .ribbon.compact .rfield { grid-template-columns: auto auto; }
 .ribbon.compact .rstack { display: flex; }
@@ -770,3 +770,58 @@ table.grid td.chg { background: #ffeb9c; }
   .ribbon.compact .rbtn:not(.primary) .rbtn-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .ribbon.compact .rbtn:not(.primary) { padding: 4px 6px; }
 }
+
+/* N5.3: Materials, BOM and Operations as workbooks (Workbook.tsx): the sheet fills the screen, tabs at the bottom */
+.wb-page { display: flex; flex-direction: column; gap: 8px; overflow: hidden; padding-bottom: 0; }
+.wb-page > * { flex: none; min-width: 0; }
+.wb-page > .xl-sheet { flex: 1 1 auto; min-height: 0; }
+.wb-bar { display: grid; gap: 6px; }
+.wb-bar .notice { padding: 6px 12px; }
+.xl-tabbar { display: flex; align-items: stretch; background: var(--ribbon); border: 1px solid var(--line); min-height: 34px; }
+.xl-tabbar .xl-tabs { border: 0; flex: 1; min-width: 0; background: transparent; }
+.xl-info { display: flex; align-items: center; padding: 0 12px; color: var(--muted); font-size: var(--fs-2xs); white-space: nowrap; border-left: 1px solid var(--line); }
+.xl-formula-input { flex: 1; min-width: 0; border: 0; padding: 0 10px; font: inherit; font-size: var(--fs-sm); background: transparent; color: var(--ink); }
+.xl-formula-input:focus { outline: none; box-shadow: inset 0 -2px 0 var(--accent); }
+.xl-sheet > section > .empty { margin: 24px; }
+/* Sheet look from CSS alone, so the tables keep their cells: column letters above each header row and row numbers
+   in a gutter at the left (counters), the header row 1, as in Excel. */
+.xl-auto .table-wrap { overflow: visible; padding: 24px 0 0 44px; position: relative;
+  background: linear-gradient(var(--sunken), var(--sunken)) 0 0 / 44px 24px no-repeat; }
+:where(.xl-auto table.grid:not(.xl) tr > :first-child) { position: relative; }
+.xl-auto table.grid:not(.xl) thead tr:last-child th { top: 24px; }
+.xl-auto table.grid:not(.xl) thead tr:last-child th[data-col]::before {
+  content: attr(data-col); position: absolute; left: -1px; right: -1px; top: -25px; height: 24px; display: grid; place-items: center;
+  background: var(--sunken); color: var(--faint); font-weight: 400; font-size: var(--fs-2xs); border: 1px solid #c8c6c4; pointer-events: none;
+}
+.xl-auto table.grid:not(.xl) tbody tr > [data-rn]:first-child::before,
+.xl-auto table.grid:not(.xl) thead tr:last-child > th[data-rn]:first-child::after {
+  content: attr(data-rn); position: absolute; top: -1px; bottom: -1px; left: -45px; width: 44px; display: grid; place-items: center;
+  background: var(--sunken); color: var(--faint); font-size: var(--fs-2xs); font-weight: 400; border: 1px solid #c8c6c4; font-family: var(--font); font-style: normal;
+}
+.xl-auto table.grid:not(.xl) tbody tr > td.cell-cur:first-child::before, .xl-auto table.grid:not(.xl) tbody tr:has(td.cell-cur, td.cell-sel) > td:first-child::before { color: var(--accent); background: #e1dfdd; }
+.xl-auto th.idx, .xl-auto td.idx { text-align: center; }
+/* the screens' cards become bands of one sheet */
+.xl-auto .panel { border: 0; border-radius: 0; background: transparent; }
+.xl-auto .panel + .panel, .xl-auto section + section > .panel { border-top: 1px solid var(--line); }
+.xl-auto .panel-pad { padding: 0; }
+.xl-auto .section-head { background: var(--sunken); border-bottom: 1px solid var(--line); padding: 6px 12px; }
+.xl-auto .section-head h2 { font-size: var(--fs-md); }
+/* ribbon fields: find boxes and check boxes */
+.ribbon .search { height: 24px; width: 172px; padding: 0 6px; font-size: var(--fs-2xs); }
+.rcheck { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); padding: 2px 6px; white-space: nowrap; cursor: pointer; }
+.rcheck input { width: 16px; height: 16px; accent-color: var(--accent); margin: 0; }
+.wb-bar .bom-tools { display: flex; align-items: center; gap: 10px; padding: 2px 2px; font-size: var(--fs-sm); flex-wrap: wrap; }
+.ribbon .seg { border-radius: 2px; }
+.ribbon .seg button { font-size: var(--fs-2xs); padding: 3px 10px; }
+.xl-auto .ops-uo { display: block; }
+.xl-auto .ops-uo > .notice { margin: 16px; }
+.xl-auto th.op-stephead { overflow: visible; white-space: normal; }
+.xl-auto table.sheet-fixed { table-layout: fixed; width: auto; }
+.xl-auto table.sheet-fixed td { overflow-wrap: anywhere; }
+.xl-auto table.sheet-fixed td.mono { white-space: nowrap; overflow-wrap: normal; overflow: hidden; text-overflow: ellipsis; }
+/* the screen's title and explanation on one line (the ribbon tab already names the screen); on a short window
+   (a laptop at 150 %) the sheet gets that room too — the Guide explains every screen */
+.wb-page > .page-head > div, .mb-page > .page-head > div { display: flex; align-items: baseline; gap: 4px 12px; flex-wrap: wrap; }
+.wb-page > .page-head h1, .mb-page > .page-head h1 { font-size: var(--fs-lg); }
+.wb-page > .page-head p, .mb-page > .page-head p { margin: 0; }
+@media (max-height: 650px) { .wb-page > .page-head, .mb-page > .page-head { display: none; } .wb-page, .mb-page { padding-top: 8px; } }

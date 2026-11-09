@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { PageIntro } from "../ui/PageIntro";
-import { RibbonButton, RibbonGroup, ScreenRibbon } from "../ui/Ribbon";
+import { RibbonButton, RibbonGroup, RibbonStack, ScreenRibbon } from "../ui/Ribbon";
 import { addManualLine, batchesFor, computeBom, removeLine, setLine, type Values, type BomBackup, type BomPart, type BomResult, type BomRow, type BomTotal, type BomUo } from "../bom/model";
 import { fmtQty } from "../mb/model";
 import { batchSize, componentText, recipeOf, withBackups } from "../model/recipes";
@@ -10,6 +10,7 @@ import { downloadBlob } from "../storage/files";
 import { writeWorkbook } from "../xlsx/workbook";
 import { BackupsDialog } from "./MaterialRefs";
 import { HeadRow, useColumns, type Head } from "../ui/resize";
+import { Workbook } from "../ui/Workbook";
 import { addRevision, changesByLine, compareBom, deleteRevision, latestRevision, makeRevision, type Change, type Comparison } from "../bom/revisions";
 import { CompareDialog, RevisionsDialog, SaveRevisionDialog, beforeAfter, comparisonSheets, deltaText, nowState, when } from "./BomRevisions";
 import { WhereUsedDialog, type GoPlace } from "./WhereUsed";
@@ -97,107 +98,147 @@ export function BomView(props: { project: Project; update: Update; confirm: Conf
     downloadBlob(blob, `${project.meta.name} BOM${rev} ${date}.xlsx`.replace(/[\\/:*?"<>|]/g, "-"));
   };
 
+  // The sheets at the bottom: everything, one per unit operation, the totals (remembered in this browser).
+  const [sheetPick, setSheetPick] = useState<string>(() => store.get("sheet") ?? "all");
+  const pickSheet = (id: string) => { setSheetPick(id); store.set("sheet", id); };
+  const sheet = sheetPick === "all" || sheetPick === "totals" || bom.uos.some((u) => `uo:${u.uo.id}` === sheetPick) ? sheetPick : "all";
+  const showUo = (id: string) => sheet === "all" || sheet === `uo:${id}`;
+  const showTotals = sheet === "all" || sheet === "totals";
+  const totalCount = bom.totals.length + bom.prepared.length + bom.backupTotals.length;
+
   return (
-    <div className="page">
-      <div className="page-inner wide">
-        <div className="page-head">
-          <div>
-            <h1>BOM</h1>
-            <PageIntro id="bom" lead="Material quantities per unit operation, for each scenario.">Every line takes its quantity from one source: the applied mass balance (<b>MB</b>), counts linked on PFD shapes (<b>PFD</b>), or a number entered here (<b>Manual</b>, with a reason). Quantity = source value × (1 + overage). A material made in-house (a buffer with a recipe) is followed by its components (<b>Recipe</b>); alternate materials are listed as <b>Backup</b> and kept out of the totals.</PageIntro>
-          </div>
-          <div className="spacer" />
-          <div className="toolbar">
-            <span className="chip">{lineCount} lines · {bom.uos.length} unit operations</span>
-            {bom.issueCount > 0 ? <span className="chip warn">{bom.issueCount} to check</span> : lineCount > 0 && <span className="chip ok">Complete</span>}
-          </div>
-          <ScreenRibbon screen="bom">
-            <RibbonGroup label="Revisions">
-              <RibbonButton big icon="revisions" onClick={() => setDialog({ kind: "list" })} title="Saved revisions: compare any two" label={`Revisions (${revisions.length})`} />
-              <RibbonButton big icon="bookmark" onClick={() => setDialog({ kind: "save" })} disabled={!lineCount} title="Keep what the BOM says now, to see later what changed" label="Save revision…" />
-            </RibbonGroup>
-            <RibbonGroup label="Export">
-              <RibbonButton big primary icon="excel" onClick={exportExcel} disabled={!lineCount} title="The BOM of every scenario as an Excel workbook" label="Export to Excel" />
-            </RibbonGroup>
-          </ScreenRibbon>
+    <div className="page wb-page">
+      <div className="page-head">
+        <div>
+          <h1>BOM</h1>
+          <PageIntro id="bom" lead="Material quantities per unit operation, for each scenario.">Every line takes its quantity from one source: the applied mass balance (<b>MB</b>), counts linked on PFD shapes (<b>PFD</b>), or a number entered here (<b>Manual</b>, with a reason). Quantity = source value × (1 + overage). A material made in-house (a buffer with a recipe) is followed by its components (<b>Recipe</b>); alternate materials are listed as <b>Backup</b> and kept out of the totals. The sheets at the bottom show all of it, one unit operation, or the totals.</PageIntro>
         </div>
-
-        {!project.mb.current && (
-          <div className="notice">No mass balance is applied yet. Materials from the MB appear here after you apply a workbook on the Mass Balance screen; PFD links and lines you add work already.</div>
-        )}
-        {workbookNotApplied(project) && (
-          <div className="notice warn notice-row">
-            <span>{project.mb.current ? "The Mass Balance workbook changed after its values were applied. The MB quantities here are the ones applied before." : "The Mass Balance workbook is not applied yet."}</span>
-            {props.goTo && <button className="btn small primary" onClick={() => props.goTo!("mb")}>Review and apply</button>}
-          </div>
-        )}
-        {bom.leftOutCount > 0 && (
-          <div className="notice warn">
-            {bom.leftOutCount} applied MB material value(s) are left out because they no longer match the PFD or the material list (a stream that is gone, a material that is not in the list, or another unit). The lines concerned say why. The BOM always follows the current PFD and material list.
-          </div>
-        )}
-        {bom.orphans.length > 0 && (
-          <div className="notice warn">These MB rows cannot become BOM lines (their material or unit operation is not there any more): {bom.orphans.join("; ")}</div>
-        )}
-        {bom.uos.length === 0 && (
-          <div className="panel"><div className="empty"><strong>No unit operations yet</strong><span>Draw unit operations on the PFD (Units tab). Their materials appear here.</span></div></div>
-        )}
-
+      </div>
+      <ScreenRibbon screen="bom">
         {lineCount > 0 && (
-          <section className="panel bom-tools" aria-label="Find in the BOM">
-            <div className="toolbar">
-              <input className="search" type="search" value={filter.q} onChange={(e) => setFilter({ ...filter, q: e.target.value })} placeholder="Search code or name (also recipe parts)" aria-label="Search the BOM" />
-              <select className="search" style={{ width: "auto" }} value={filter.cat} onChange={(e) => setFilter({ ...filter, cat: e.target.value })} aria-label="Category">
-                <option value="">All categories</option>
-                {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <label className="check"><input type="checkbox" checked={filter.attn} onChange={(e) => setFilter({ ...filter, attn: e.target.checked })} /> To check</label>
-              <label className="check"><input type="checkbox" checked={filter.manual} onChange={(e) => setFilter({ ...filter, manual: e.target.checked })} /> Manual lines</label>
-              {base && <label className="check"><input type="checkbox" checked={filter.changed} onChange={(e) => setFilter({ ...filter, changed: e.target.checked })} /> Changed since {base.label}</label>}
-              {filtered && <button className="btn ghost small" onClick={() => setFilter(NO_FILTER)}>Clear</button>}
-              <span className="spacer" />
-              <span className="hint">{filtered ? `${shownCount} of ${lineCount} lines` : `${lineCount} lines`}</span>
-              <button className="btn small" onClick={() => fold(new Set(bom.uos.map((u) => u.uo.id)))}>Fold all</button>
-              <button className="btn small" onClick={() => fold(new Set())}>Unfold all</button>
+          <RibbonGroup label="Find and filter">
+            <div className="rfields">
+              <label className="rfield"><span>Find</span>
+                <input className="search" type="search" value={filter.q} onChange={(e) => setFilter({ ...filter, q: e.target.value })} placeholder="Code or name (also recipe parts)" aria-label="Search the BOM" />
+              </label>
+              <label className="rfield"><span>Category</span>
+                <select value={filter.cat} onChange={(e) => setFilter({ ...filter, cat: e.target.value })} aria-label="Category">
+                  <option value="">All categories</option>
+                  {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </label>
             </div>
-            <div className="toolbar">
-              <span className="hint">Changes since</span>
-              <select className="search" style={{ width: "auto" }} value={base ? (baseId === "latest" || !revisions.some((r) => r.id === baseId) ? "latest" : base.id) : "none"} onChange={(e) => chooseBase(e.target.value)} aria-label="Changes since">
-                <option value="none">— (no marks)</option>
-                {revisions.length > 0 && <option value="latest">Newest revision ({latestRevision(project)!.label})</option>}
-                {[...revisions].reverse().map((r) => <option key={r.id} value={r.id}>{r.label} · {when(r.createdAt)}</option>)}
-              </select>
-              {!revisions.length && <span className="hint">No revision yet: “Save revision…” keeps the BOM as it is now; later changes are marked against it.</span>}
-              {cmp && (
-                <button className="linkish" onClick={() => setDialog({ kind: "compare", cmp })} title="See every change">
-                  {cmp.count.added + cmp.count.removed + cmp.count.changed === 0 ? `No line changed since ${cmp.from}` : `${cmp.count.added} added · ${cmp.count.removed} removed · ${cmp.count.changed} changed since ${cmp.from}`}
-                </button>
-              )}
+            <div className="rstack">
+              <label className="rcheck"><input type="checkbox" checked={filter.attn} onChange={(e) => setFilter({ ...filter, attn: e.target.checked })} /> To check</label>
+              <label className="rcheck"><input type="checkbox" checked={filter.manual} onChange={(e) => setFilter({ ...filter, manual: e.target.checked })} /> Manual lines</label>
+              {base && <label className="rcheck"><input type="checkbox" checked={filter.changed} onChange={(e) => setFilter({ ...filter, changed: e.target.checked })} /> Changed since {base.label}</label>}
             </div>
-          </section>
+            {filtered && <div className="rstack"><button className="rbtn" onClick={() => setFilter(NO_FILTER)} title="Show every line">Clear</button></div>}
+          </RibbonGroup>
         )}
+        <RibbonGroup label="Revisions">
+          <RibbonStack>
+            <RibbonButton icon="revisions" onClick={() => setDialog({ kind: "list" })} title="Saved revisions: compare any two" label={`Revisions (${revisions.length})`} />
+            <RibbonButton icon="bookmark" onClick={() => setDialog({ kind: "save" })} disabled={!lineCount} title="Keep what the BOM says now, to see later what changed" label="Save revision…" />
+          </RibbonStack>
+          {lineCount > 0 && (
+            <div className="rfields">
+              <label className="rfield"><span>Changes since</span>
+                <select value={base ? (baseId === "latest" || !revisions.some((r) => r.id === baseId) ? "latest" : base.id) : "none"} onChange={(e) => chooseBase(e.target.value)} aria-label="Changes since">
+                  <option value="none">— (no marks)</option>
+                  {revisions.length > 0 && <option value="latest">Newest revision ({latestRevision(project)!.label})</option>}
+                  {[...revisions].reverse().map((r) => <option key={r.id} value={r.id}>{r.label} · {when(r.createdAt)}</option>)}
+                </select>
+              </label>
+            </div>
+          )}
+        </RibbonGroup>
+        {lineCount > 0 && sheet === "all" && (
+          <RibbonGroup label="Outline">
+            <div className="rstack">
+              <RibbonButton icon="up" onClick={() => fold(new Set(bom.uos.map((u) => u.uo.id)))} title="Show only the unit operation bands" label="Fold all" />
+              <RibbonButton icon="down" onClick={() => fold(new Set())} title="Show every line" label="Unfold all" />
+            </div>
+          </RibbonGroup>
+        )}
+        <RibbonGroup label="Export">
+          <RibbonButton big primary icon="excel" onClick={exportExcel} disabled={!lineCount} title="The BOM of every scenario as an Excel workbook" label="Export to Excel" />
+        </RibbonGroup>
+      </ScreenRibbon>
 
+      <Workbook
+        bar={
+          <div className="wb-bar">
+            {!project.mb.current && (
+              <div className="notice">No mass balance is applied yet. Materials from the MB appear here after you apply a workbook on the Mass Balance screen; PFD links and lines you add work already.</div>
+            )}
+            {workbookNotApplied(project) && (
+              <div className="notice warn notice-row">
+                <span>{project.mb.current ? "The Mass Balance workbook changed after its values were applied. The MB quantities here are the ones applied before." : "The Mass Balance workbook is not applied yet."}</span>
+                {props.goTo && <button className="btn small primary" onClick={() => props.goTo!("mb")}>Review and apply</button>}
+              </div>
+            )}
+            {bom.leftOutCount > 0 && (
+              <div className="notice warn">
+                {bom.leftOutCount} applied MB material value(s) are left out because they no longer match the PFD or the material list (a stream that is gone, a material that is not in the list, or another unit). The lines concerned say why. The BOM always follows the current PFD and material list.
+              </div>
+            )}
+            {bom.orphans.length > 0 && (
+              <div className="notice warn">These MB rows cannot become BOM lines (their material or unit operation is not there any more): {bom.orphans.join("; ")}</div>
+            )}
+            {lineCount > 0 && (
+              <div className="bom-tools" aria-label="Find in the BOM" role="status">
+                <span>{filtered ? `${shownCount} of ${lineCount} lines match the filter` : `${lineCount} lines`}</span>
+                {filtered && <button className="linkish" onClick={() => setFilter(NO_FILTER)}>Clear the filter</button>}
+                <span className="spacer" />
+                {!revisions.length && <span className="hint">No revision yet: “Save revision…” keeps the BOM as it is now; later changes are marked against it.</span>}
+                {cmp && (
+                  <button className="linkish" onClick={() => setDialog({ kind: "compare", cmp })} title="See every change">
+                    {cmp.count.added + cmp.count.removed + cmp.count.changed === 0 ? `No line changed since ${cmp.from}` : `${cmp.count.added} added · ${cmp.count.removed} removed · ${cmp.count.changed} changed since ${cmp.from}`}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        }
+        tabs={[
+          { id: "all", label: `All (${lineCount})`, title: "Every unit operation and the totals" },
+          ...bom.uos.map((u) => {
+            const issues = u.rows.reduce((n, r) => n + r.issues.length, 0);
+            return { id: `uo:${u.uo.id}`, label: `${u.uo.code} (${u.rows.length})`, title: `${u.uo.code} · ${u.uo.name}${issues ? ` · ${issues} to check` : ""}`, ...(issues ? { dot: "warn" as const } : {}) };
+          }),
+          ...(totalCount ? [{ id: "totals", label: `Totals (${bom.totals.length})`, title: "What to buy, what is made in-house, backups" }] : []),
+        ]}
+        active={sheet}
+        onPick={pickSheet}
+        info={<>{lineCount} lines · {bom.uos.length} unit operations{bom.issueCount > 0 ? <> · <span className="warn-text">{bom.issueCount} to check</span></> : lineCount > 0 ? " · Complete" : ""}</>}
+      >
+        {bom.uos.length === 0 && (
+          <div className="empty"><strong>No unit operations yet</strong><span>Draw unit operations on the PFD (Units tab). Their materials appear here.</span></div>
+        )}
         {bom.uos.map((u) => {
+          if (!showUo(u.uo.id)) return null;
           const rows = u.rows.filter((r) => shows(u, r));
           const removed = cmp ? cmp.lines.filter((c) => c.kind === "removed" && c.uo === u.uo.code && (!q || c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q))) : [];
           if (filtered && !rows.length && !(filter.changed && removed.length)) return null;
           // A line that is still listed but not counted any more is marked on its own row, not shown twice.
           const gone = removed.filter((c) => !u.rows.some((r) => r.material.code === c.code));
           return <UoSection key={u.uo.id} u={u} rows={rows} removed={filter.attn || filter.manual || filter.cat ? [] : gone} base={base?.label ?? null} changes={changes}
-            folded={folded.has(u.uo.id)} onFold={() => { const n = new Set(folded); if (n.has(u.uo.id)) n.delete(u.uo.id); else n.add(u.uo.id); fold(n); }}
+            folded={sheet === "all" && folded.has(u.uo.id)} onFold={() => { const n = new Set(folded); if (n.has(u.uo.id)) n.delete(u.uo.id); else n.add(u.uo.id); fold(n); }}
             bom={bom} project={project} update={update} confirm={props.confirm} onBackups={setBackupsOf} onWhereUsed={(m) => setUsedOf(m.id)} onReplace={props.transform ? (m) => setReplacing(m.id) : undefined} />;
         })}
-        {filtered && shownCount === 0 && <div className="notice">No line matches. <button className="linkish" onClick={() => setFilter(NO_FILTER)}>Clear the filters</button></div>}
+        {filtered && shownCount === 0 && sheet !== "totals" && <div className="notice xl-empty">No line matches. <button className="linkish" onClick={() => setFilter(NO_FILTER)}>Clear the filters</button></div>}
 
-        {bom.totals.length > 0 && (
+        {showTotals && bom.totals.length > 0 && (
           <TotalsTable label="Totals" title="Totals per material" scen={bom.scenarios} list={bom.totals}
             hint={bom.prepared.length ? "What to buy, over all unit operations, with overage. Materials made in-house are replaced by their components (listed below); lines marked \"Not counted\" are left out." : "Over all unit operations, with overage. Lines marked \"Not counted\" are left out."} showVia={bom.totals.some((t) => t.via.length > 0)} />
         )}
-        {bom.prepared.length > 0 && (
+        {showTotals && bom.prepared.length > 0 && (
           <TotalsTable label="Prepared in-house" title="Prepared in-house" scen={bom.scenarios} list={bom.prepared}
             hint="Made from their recipe (Materials screen), not bought: their components are counted in the totals above." showVia={bom.prepared.some((t) => t.via.length > 0)} />
         )}
-        {bom.backupTotals.length > 0 && <BackupTotalsTable bom={bom} />}
-      </div>
+        {showTotals && bom.backupTotals.length > 0 && <BackupTotalsTable bom={bom} />}
+      </Workbook>
       {usedOf && <WhereUsedDialog project={project} materialId={usedOf} onClose={() => setUsedOf(null)} go={(place) => props.go?.(place)} onReplace={props.transform ? (id) => { setUsedOf(null); setReplacing(id); } : undefined} />}
       {replacing && props.transform && (
         <ReplaceDialog project={project} materialId={replacing} busy={busy} onClose={() => setReplacing(null)}

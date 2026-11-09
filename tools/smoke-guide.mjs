@@ -74,7 +74,7 @@ await (await openStep("bom")).locator("button.primary").click();
 await wait(500);
 check("“Open BOM” shows the BOM", await page.getByRole("tab", { name: "BOM", exact: true }).getAttribute("aria-selected") === "true");
 await page.locator(".guide-tab", { hasText: "This screen" }).click();
-check("“This screen” follows the screen on view (BOM)", /One section per unit operation/.test(await text(".guide-screen")));
+check("“This screen” follows the screen on view (BOM)", /one per unit operation, Totals/.test(await text(".guide-screen")));
 await page.locator(".guide-tab", { hasText: "Linking steps" }).click();
 await (await openStep("map")).locator("button.primary").click();
 await wait(700);

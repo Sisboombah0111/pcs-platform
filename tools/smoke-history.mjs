@@ -70,14 +70,14 @@ await tab("Operations");
 await page.locator(".ops-nav-item", { hasText: "CEX" }).click();
 await page.getByLabel("Add steps from a template").selectOption("bindelute");
 await wait(400);
-check("CEX has 9 steps", /9 steps/.test(await text(".ops-head .chip")));
+check("CEX has 9 steps", /9 steps/.test(await text(".xl-info")));
 await page.locator(".page-head h1").click();
 await page.keyboard.press("Control+z");
 await wait(400);
-check("Ctrl+Z (not in a text field): CEX has no steps again", /0 steps/.test(await text(".ops-head .chip")), await text(".ops-head .chip"));
+check("Ctrl+Z (not in a text field): CEX has no steps again", /0 steps/.test(await text(".xl-info")), await text(".xl-info"));
 await page.keyboard.press("Control+y");
 await wait(400);
-check("Ctrl+Y: the 9 steps are back", /9 steps/.test(await text(".ops-head .chip")));
+check("Ctrl+Y: the 9 steps are back", /9 steps/.test(await text(".xl-info")));
 
 // ---- Replace, undone ---------------------------------------------------------------------------------------------------------
 await tab("Materials");
