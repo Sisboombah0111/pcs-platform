@@ -28,6 +28,8 @@ const toast = async () => (await page.locator(".toast").last().innerText().catch
 const tab = async (name) => { await page.getByRole("tab", { name, exact: true }).click(); await wait(500); };
 const cell = (tag, step) => page.getByRole("button", { name: new RegExp(`^${tag} in step ${step}:`) });
 const stepRow = (n) => page.locator(`tr[data-step='${n}']`);
+// N5.4: a step's streams and actions read as one line; their editors open in a list below the cell.
+const openDd = async (name) => { await page.getByRole("button", { name, exact: true }).click(); await wait(150); };
 const labels = () => page.evaluate(() => window.__pcsPfd.all().filter((e) => e.type === "text" && !e.isDeleted).map((e) => e.originalText ?? e.text));
 
 await page.goto(base + (base.includes("?") ? "&" : "?") + "debug");
@@ -67,6 +69,7 @@ if (shot) await page.screenshot({ path: `${shot}-table.png` });
 await page.getByRole("tab", { name: "Steps & actions" }).click();
 await wait(300);
 check("the steps list says the same: P-101: 50 % in step 4", /P-101: 50 %/.test(await stepRow(4).innerText()));
+await openDd("Actions of step 4");
 await stepRow(4).getByRole("button", { name: "Remove P-101: 50 % from step 4" }).click();
 await wait(200);
 
@@ -76,8 +79,11 @@ await wait(300);
 await page.getByLabel("Add steps from a template").selectOption("bindelute");
 await wait(400);
 check("CEX: 9 steps from the template", /9 steps/.test(await text(".xl-info")));
+await openDd("Streams of step 3");
 await page.getByLabel("Add a stream to step 3").selectOption("ST-CEX-002");
+await openDd("Actions of step 3");
 await page.getByLabel("Add an action to step 3").selectOption("__new");
+await wait(150);
 await page.getByLabel("New tag for step 3").fill("XV-201");
 await page.getByRole("button", { name: "Add tag" }).click();
 await wait(300);
@@ -136,6 +142,7 @@ check("Show in Operations: the PROA state table with T-101", /PROA ·/.test(awai
 // ---- N4.14: the order of actions in a step, and the step view on the PFD ---------------------------------------------------------
 await page.getByRole("tab", { name: "Steps & actions" }).click();
 await wait(300);
+await openDd("Actions of step 6");
 await stepRow(6).getByRole("button", { name: "Move Open XV-104 earlier in step 6" }).click();
 await wait(300);
 const order = await stepRow(6).locator(".op-chip.act > span:not(.op-chip-sub)").allInnerTexts();

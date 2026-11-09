@@ -183,7 +183,14 @@ export function useCellSelection(root: HTMLElement | null, resetKey: unknown, on
     const inThisTable = (el: Element | null) => !!el && !!sel.current && sel.current.anchor.table.contains(el);
     const onKey = (e: KeyboardEvent) => {
       const s = sel.current;
-      if (!s || e.isComposing || e.key === "Process" || e.altKey) return;
+      if (!s || e.isComposing || e.key === "Process") return;
+      // A cell with a drop-down list (Operations streams and actions): Alt+↓ or F2 opens it, as in Excel.
+      if ((e.altKey && e.key === "ArrowDown") || (e.key === "F2" && !e.altKey)) {
+        const free0 = !document.activeElement || document.activeElement === document.body;
+        const dd = free0 && s.anchor.table.isConnected ? cellAt(s.anchor.table, s.anchor.row, s.anchor.col)?.querySelector<HTMLButtonElement>("[data-dropdown]") : null;
+        if (dd) { e.preventDefault(); dd.click(); return; }
+      }
+      if (e.altKey) return;
       if (!s.anchor.table.isConnected) { clear(); return; }
       const active = document.activeElement;
       if (active && active.closest(".dialog, .gc-overlay, .scrim")) return;

@@ -92,9 +92,10 @@ await page.getByRole("button", { name: "Close the guide" }).click();
 // ---- batches: bags and tank filters ------------------------------------------------------------------------------
 await page.getByRole("tab", { name: "BOM", exact: true }).click();
 await wait(700);
-const lineNote = async (code) => page.locator(`section[aria-label='BOM PROA'] tbody tr:not(.bom-sub)`, { hasText: code }).first().locator(".bom-batches").innerText();
-check("BOM: BUF-1001-B in 200 L bags, 10 batches at Sending", (await lineNote("BUF-1001-B")) === "Batches of 200 L: Sending 10 · Receiving 0");
-check("BOM: BUF-1001-T in 2,000 L tank batches, 8 at Receiving", (await lineNote("BUF-1001-T")) === "Batches of 2,000 L: Sending 0 · Receiving 8");
+// N5.4: the Batches column shows "10 / 0 × 200 L"; its tooltip says it in full.
+const lineNote = async (code) => { const b = page.locator(`section[aria-label='BOM PROA'] tbody tr:not(.bom-sub)`, { hasText: code }).first().locator(".bom-batches"); return `${await b.innerText()} | ${await b.getAttribute("title")}`; };
+check("BOM: BUF-1001-B in 200 L bags, 10 batches at Sending", (await lineNote("BUF-1001-B")) === "10 / 0 × 200 L | Batches of 200 L: Sending 10 · Receiving 0", await lineNote("BUF-1001-B"));
+check("BOM: BUF-1001-T in 2,000 L tank batches, 8 at Receiving", (await lineNote("BUF-1001-T")) === "0 / 8 × 2,000 L | Batches of 2,000 L: Sending 0 · Receiving 8", await lineNote("BUF-1001-T"));
 const part = async (parent, code) => page.evaluate(([parent, code]) => {
   const rows = [...document.querySelectorAll("section[aria-label='BOM PROA'] tbody tr")];
   const i = rows.findIndex((r) => !r.classList.contains("bom-sub") && r.children[0].innerText.trim() === parent);
@@ -144,7 +145,7 @@ await wait(400);
 check("Materials shows the batch size on the recipe button", (await page.getByLabel("Recipe of BUF-1001-B").innerText()) === "Recipe (2) · 100 L");
 await page.getByRole("tab", { name: "BOM", exact: true }).click();
 await wait(600);
-check("BOM after the change: 1,980 L in 100 L bags = 20 bags", (await lineNote("BUF-1001-B")) === "Batches of 100 L: Sending 20 · Receiving 0" && (await part("BUF-1001-B", "CON-0004"))?.[1] === "20");
+check("BOM after the change: 1,980 L in 100 L bags = 20 bags", (await lineNote("BUF-1001-B")) === "20 / 0 × 100 L | Batches of 100 L: Sending 20 · Receiving 0" && (await part("BUF-1001-B", "CON-0004"))?.[1] === "20");
 
 check("no page errors", errors.length === 0, errors.slice(0, 3).join(" | "));
 await browser.close();

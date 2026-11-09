@@ -16,6 +16,7 @@ import { Dialog } from "../ui/Dialog";
 import { RowMenu } from "../ui/RowMenu";
 import { HeadRow, useColumns, type Head } from "../ui/resize";
 import { Workbook } from "../ui/Workbook";
+import { CellDropdown } from "../ui/CellDropdown";
 import { readTables, writeWorkbook } from "../xlsx/workbook";
 import type { GoPlace } from "./WhereUsed";
 
@@ -285,7 +286,12 @@ function StepsTable(props: Parameters<typeof UoOperations>[0] & { steps: OpStep[
               <td><input className="cell-input num-input" inputMode="decimal" value={s.minutes ?? ""} aria-label={`Minutes of step ${i + 1}`}
                 onChange={(e) => { const v = e.target.value.trim(); const n = Number(v); edit(i, { minutes: v === "" || !Number.isFinite(n) || n < 0 ? undefined : n }); }} /></td>
               <td className="num faint-num">{hhmm(starts[i])}</td>
-              <td>
+              <td className="op-dd-cell">
+                {(() => {
+                  const list = s.streams ?? [];
+                  const text = list.map((id) => { const flow = streamFlow(project, id); return `${id}${names.get(id) ? ` ${names.get(id)}` : ""}${flow ? ` · ${fmtQty(flow.value)} ${flow.unit}` : ""}`; }).join(", ");
+                  return (
+                <CellDropdown label={`Streams of step ${i + 1}`} summary={text} empty="+ Stream" title={text || "Choose the streams that flow in this step"} bad={list.some((id) => !known.has(id))}>
                 <div className="op-chips">
                   {(s.streams ?? []).map((id) => {
                     const flow = streamFlow(project, id);
@@ -306,8 +312,17 @@ function StepsTable(props: Parameters<typeof UoOperations>[0] & { steps: OpStep[
                     </select>
                   )}
                 </div>
+                </CellDropdown>
+                  );
+                })()}
               </td>
-              <td>
+              <td className="op-dd-cell">
+                <CellDropdown label={`Actions of step ${i + 1}`} empty="+ Action"
+                  title={s.actions.map((a) => actionText(byId.get(a.equipmentId), a.state)).join("; ") || "Add what is done to the equipment at the start of this step"}
+                  summary={s.actions.length ? s.actions.map((a, k) => {
+                    const eq = byId.get(a.equipmentId);
+                    return <span key={a.equipmentId}>{k > 0 && "; "}<span className={eq && isActive(eq.type, a.state) ? "op-on" : undefined}>{actionText(eq, a.state)}</span></span>;
+                  }) : null}>
                 <div className="op-chips">
                   {s.actions.map((a, k) => {
                     const eq = byId.get(a.equipmentId);
@@ -328,6 +343,7 @@ function StepsTable(props: Parameters<typeof UoOperations>[0] & { steps: OpStep[
                     onAdd={(equipmentId, state) => setSteps((x) => putAction(x, i, { equipmentId, state }))}
                     onNew={(tag, type) => props.addEquipment(tag, type, uo.id)} />
                 </div>
+                </CellDropdown>
               </td>
               <td><input className="cell-input" value={s.note ?? ""} aria-label={`Note of step ${i + 1}`} onChange={(e) => edit(i, { note: e.target.value })} /></td>
               <td>

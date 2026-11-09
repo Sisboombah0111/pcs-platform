@@ -156,7 +156,7 @@ function FormulaBar(props: { sheet: RefObject<HTMLDivElement | null>; resetKey: 
           onBlur={commit} onKeyDown={onKey} />
       ) : (
         <span className="xl-formula">
-          {live ? <>{live.dataset.f ?? cellText(live)}{live.dataset.src && <span className="xl-src">{live.dataset.src}{live.dataset.f ? ` · value ${cellText(live)}` : ""}</span>}</>
+          {live ? <>{live.dataset.f ?? live.dataset.full ?? cellText(live)}{live.dataset.src && <span className="xl-src">{live.dataset.src}{live.dataset.f ? ` · value ${cellText(live)}` : ""}</span>}</>
             : <span className="xl-src">Click a cell: its whole contents show here, and a text cell can be edited here too.</span>}
         </span>
       )}

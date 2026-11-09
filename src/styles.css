@@ -825,3 +825,47 @@ table.grid td.chg { background: #ffeb9c; }
 .wb-page > .page-head h1, .mb-page > .page-head h1 { font-size: var(--fs-lg); }
 .wb-page > .page-head p, .mb-page > .page-head p { margin: 0; }
 @media (max-height: 650px) { .wb-page > .page-head, .mb-page > .page-head { display: none; } .wb-page, .mb-page { padding-top: 8px; } }
+
+/* N5.4: BOM rows one line high, as in Excel — the material cell's extra lines run on in the same line (cut off at
+   the cell's edge; all of it in the tooltip and the formula bar), a corner mark when there is something to read */
+.bom-lines td { padding: 3px 6px; vertical-align: middle; }
+.bom-lines td.bom-mat { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; }
+.bom-lines td.bom-mat > div { display: inline; margin: 0; }
+.bom-lines td.bom-mat > div + div::before { content: " · "; color: var(--faint); font-weight: 400; }
+.bom-lines td.bom-mat .chip.prep { margin-left: 6px; }
+.bom-lines td.bom-mat .small-link { margin-left: 6px; }
+.bom-lines td.bom-mat .bom-actions { display: inline-flex; gap: 4px; margin: 0 6px 0 0; vertical-align: baseline; }
+.bom-lines td.bom-mat .bom-actions .btn { padding: 0 6px; min-height: 0; line-height: 18px; }
+.bom-lines td.mark::after { content: ""; position: absolute; top: 0; right: 0; border-style: solid; border-width: 0 9px 9px 0; border-color: transparent var(--mark) transparent transparent; }
+.bom-lines td.mark-issue { --mark: #d83b01; }
+.bom-lines td.mark-change { --mark: #0078d4; }
+.bom-lines td.mark-note { --mark: #8a8886; }
+.bom-lines .cell-input { padding: 2px 5px; }
+.bom-lines select.cell-input { padding: 1px 4px; }
+.bom-lines td.bom-batch-cell { white-space: nowrap; font-size: var(--fs-xs); color: var(--accent); }
+.bom-lines td.actions-cell { white-space: nowrap; }
+.bom-lines td.bom-note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* "+ Backup" takes no room in the line: it shows over the cell's right end on hover or keyboard focus */
+.bom-lines td.bom-mat .small-link:not(.has) { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); margin: 0; padding: 0 4px 0 14px;
+  background: linear-gradient(to right, transparent, var(--surface) 12px); }
+.bom-lines tr.bom-sub td.bom-mat .small-link:not(.has) { background: linear-gradient(to right, transparent, var(--sunken) 12px); }
+
+/* N5.4: Operations steps one line high — streams and actions read as text and open a list below the cell */
+/* fixed columns: a long one-line streams or actions text is cut at the cell's edge instead of widening its column
+   and squeezing the step names */
+table.ops-steps { table-layout: fixed; }
+table.ops-steps td { vertical-align: middle; padding-top: 3px; padding-bottom: 3px; }
+table.ops-steps td.idx { padding-top: 3px; }
+td.op-dd-cell { position: relative; padding: 0 !important; }
+.cell-dd { position: static; height: 100%; }
+.cell-dd-value { display: flex; align-items: center; width: 100%; min-height: 34px; border: 0; background: transparent; padding: 3px 26px 3px 8px; text-align: left; cursor: pointer; color: var(--ink); font-size: var(--fs-sm); position: relative; }
+.cell-dd-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cell-dd-value::after { content: "▾"; position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; display: grid; place-items: center; font-size: 12px; color: var(--faint); border: 1px solid transparent; border-radius: 2px; }
+.cell-dd-value:hover::after, td.cell-cur .cell-dd-value::after, .cell-dd.open .cell-dd-value::after { border-color: var(--control); background: var(--surface); color: var(--ink); }
+.cell-dd-value:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cell-dd.bad .cell-dd-text { color: var(--err); }
+.cell-dd-text .op-on { color: var(--ok); font-weight: 600; }
+.cell-pop { position: absolute; top: 100%; left: -1px; z-index: 30; min-width: calc(100% + 2px); width: max-content; max-width: 520px; max-height: 340px; overflow: auto;
+  background: var(--surface); border: 1px solid var(--control); box-shadow: 0 6.4px 14.4px rgb(0 0 0 / .13), 0 1.2px 3.6px rgb(0 0 0 / .11); padding: 8px; }
+.cell-pop.up { top: auto; bottom: 100%; }
+.cell-pop .op-chips { flex-direction: column; align-items: flex-start; }

@@ -392,14 +392,17 @@ function UoSection(props: {
   const available = project.materials.filter((m) => !inUse.has(m.id)).sort((a, b) => a.code.localeCompare(b.code));
   const issues = u.rows.reduce((n, r) => n + r.issues.length, 0);
   const scen = bom.scenarios;
+  // N5.3: one line per row, as in Excel; batches get their own column when any recipe is made in batches.
+  const batched = project.materials.some((m) => !!recipeOf(m)?.batch);
   // The same column widths in every unit operation's table.
   const heads: Head[] = [
     // The material name gets the room (it wrapped to three lines on a 1366 px laptop before N5.1).
-    { id: "code", label: "Code", width: 116 }, { id: "material", label: "Material", min: 200 }, { id: "unit", label: "Unit", width: 56 }, { id: "source", label: "Source", width: 190 },
-    ...scen.map((s): Head => ({ id: `base:${s.id}`, label: s.name, width: 100, className: "num", title: "Value from the source, before overage" })),
-    { id: "overage", label: "Overage %", width: 92, className: "num", title: "Empty: the material's default" },
-    ...scen.map((s): Head => ({ id: `total:${s.id}`, label: `${s.name} total`, width: 112, className: "num" })),
-    { id: "note", label: "Reason / note", width: 140 }, { id: "actions", width: 84, ariaLabel: "Actions" },
+    { id: "code", label: "Code", width: 116 }, { id: "material", label: "Material", min: 220 }, { id: "unit", label: "Unit", width: 52 }, { id: "source", label: "Source", width: 156 },
+    ...scen.map((s): Head => ({ id: `base:${s.id}`, label: s.name, width: 88, className: "num", title: "Value from the source, before overage" })),
+    { id: "overage", label: "Overage %", width: 80, className: "num", title: "Empty: the material's default" },
+    ...scen.map((s): Head => ({ id: `total:${s.id}`, label: `${s.name} total`, width: 98, className: "num" })),
+    ...(batched ? [{ id: "batches", label: "Batches", width: 112, title: "Batches to prepare per scenario × the batch size (materials made in batches)" } as Head] : []),
+    { id: "note", label: "Reason / note", width: 112 }, { id: "actions", width: 78, ariaLabel: "Actions" },
   ];
   const cols = useColumns("bom-lines", heads);
 
@@ -427,7 +430,7 @@ function UoSection(props: {
             {cols.colgroup}
             <HeadRow heads={heads} cols={cols} />
             <tbody>
-              {props.rows.map((r) => <BomLineRow key={r.material.id} r={r} uo={u.uo.code} scen={scen} update={update} confirm={props.confirm} onBackups={props.onBackups} onWhereUsed={props.onWhereUsed} onReplace={props.onReplace}
+              {props.rows.map((r) => <BomLineRow key={r.material.id} r={r} uo={u.uo.code} scen={scen} batched={batched} update={update} confirm={props.confirm} onBackups={props.onBackups} onWhereUsed={props.onWhereUsed} onReplace={props.onReplace}
                 change={props.changes?.get(`${u.uo.code}|${r.material.code}`)} base={props.base} />)}
               {props.removed.map((c) => (
                 <tr key={`gone-${c.code}`} className="bom-removed" title={`On ${props.base}, not on the BOM now`}>
@@ -438,6 +441,7 @@ function UoSection(props: {
                   {scen.map((s) => <td key={s.id} />)}
                   <td />
                   {scen.map((s) => <td key={s.id} className="num was">{beforeAfter(c, s.id)}</td>)}
+                  {batched && <td />}
                   <td /><td />
                 </tr>
               ))}
@@ -449,7 +453,7 @@ function UoSection(props: {
   );
 }
 
-function BomLineRow(props: { r: BomRow; uo: string; scen: Scenario[]; update: Update; confirm: Confirm; onBackups: (m: Material) => void; onWhereUsed: (m: Material) => void; onReplace?: (m: Material) => void; change?: Change; base: string | null }) {
+function BomLineRow(props: { r: BomRow; uo: string; scen: Scenario[]; batched: boolean; update: Update; confirm: Confirm; onBackups: (m: Material) => void; onWhereUsed: (m: Material) => void; onReplace?: (m: Material) => void; change?: Change; base: string | null }) {
   const { r, scen, update } = props;
   const set = (patch: Parameters<typeof setLine>[2]) => update((p) => setLine(p, r, patch));
   const manual = r.line.qtySource === "manual" && !r.line.excluded;
@@ -467,6 +471,9 @@ function BomLineRow(props: { r: BomRow; uo: string; scen: Scenario[]; update: Up
     if (src === "MB") return r.mb ? scen.filter((s) => r.mb![s.id] != null).map((s) => `${s.name.charAt(0)} ${fmtQty(r.mb![s.id])}`).join(" · ") : "";
     return r.pfd != null ? fmtQty(r.pfd) : "";
   };
+  const changeText = props.change ? (props.change.kind === "added" ? `New since ${props.base}` : props.change.kind === "removed" ? `Not counted since ${props.base}` : `${deltaText(props.change, scen)} since ${props.base}`) : "";
+  // The whole cell in the tooltip and the formula bar (the cell itself is one line, as in Excel).
+  const fullText = [r.material.name, r.parts.length ? "Prepared in-house (recipe below)" : "", r.batches ? batchesNote(r.material, r.batches, scen) : "", changeText, ...r.issues, ...r.notes].filter(Boolean).join("\n");
   const removeBackup = async (b: BomBackup) => {
     if (!(await props.confirm({ title: "Remove this backup?", body: `${b.material.code} is no longer a backup for ${b.primary.code} (in every unit operation). The material itself stays in the list.`, confirmLabel: "Remove backup", danger: true }))) return;
     update((p) => ({ ...p, materials: p.materials.map((m) => (m.id === b.primary.id ? withBackups(m, m.backups?.filter((x) => x.materialId !== b.material.id)) : m)) }));
@@ -475,23 +482,28 @@ function BomLineRow(props: { r: BomRow; uo: string; scen: Scenario[]; update: Up
     <>
     <tr className={r.line.excluded ? "row-muted" : r.issues.length ? "row-attn" : ""} data-bom-line={`${props.uo}|${r.material.code}`}>
       <td className="mono"><button className="linkish code-link" onClick={() => props.onWhereUsed(r.material)} title={`Where is ${r.material.code} used?`}>{r.material.code}</button></td>
-      <td>
+      <td className={`bom-mat${r.issues.length ? " mark mark-issue" : props.change ? " mark mark-change" : r.notes.length ? " mark mark-note" : ""}`}
+        title={fullText} data-full={fullText.replace(/\n/g, " · ")}>
         <div>
+          {/* Replace first: the cell is one line, so what is cut off at its edge must not be the way to fix it. */}
+          {props.onReplace && !r.line.excluded && (() => {
+            const old = [r.material, ...r.parts.filter((x) => !x.loop).map((x) => x.material)].filter((m, i, a) => m.status === "obsolete" && a.findIndex((y) => y.id === m.id) === i);
+            return old.length ? <span className="bom-actions">{old.map((m) => (
+              <button key={m.id} className="btn small" aria-label={`Replace ${m.code}…`} title={`${m.code} is obsolete: replace it (Materials, recipes and the MB workbook)`} onClick={() => props.onReplace!(m)}>
+                {m.id === r.material.id ? "Replace…" : `Replace ${m.code}…`}
+              </button>
+            ))}</span> : null;
+          })()}
           {r.material.name}
           {r.parts.length > 0 && <span className="chip prep" title="Made in-house from its recipe: its components are listed below and counted in the totals">Prepared</span>}
           {!r.line.excluded && <BackupLink m={r.material} onClick={() => props.onBackups(r.material)} />}
         </div>
-        {r.batches && <div className="bom-batches">{batchesNote(r.material, r.batches, scen)}</div>}
         {props.change && (
           <div className={`bom-change ${props.change.kind}`} title={props.change.kind === "changed" ? `${props.base} → now: ${scen.map((s) => `${s.name} ${beforeAfter(props.change!, s.id)}`).join("; ")}` : undefined}>
             {props.change.kind === "added" ? `New since ${props.base}` : props.change.kind === "removed" ? `Not counted since ${props.base} (was ${scen.map((s) => fmtQty(props.change!.before?.[s.id]) || "–").join(" / ")})` : `${deltaText(props.change, scen)} since ${props.base}`}{props.change.notes.length ? ` · ${props.change.notes.join("; ")}` : ""}
           </div>
         )}
         {r.issues.map((t, i) => <div key={i} className="bom-issue">{t}</div>)}
-        {props.onReplace && !r.line.excluded && (() => {
-          const old = [r.material, ...r.parts.filter((x) => !x.loop).map((x) => x.material)].filter((m, i, a) => m.status === "obsolete" && a.findIndex((y) => y.id === m.id) === i);
-          return old.length ? <div className="bom-actions">{old.map((m) => <button key={m.id} className="btn small" onClick={() => props.onReplace!(m)}>Replace {m.code}…</button>)}</div> : null;
-        })()}
         {r.notes.map((t, i) => <div key={`n${i}`} className="bom-note">{t}</div>)}
       </td>
       <td className="mono">{r.material.unit}</td>
@@ -515,7 +527,8 @@ function BomLineRow(props: { r: BomRow; uo: string; scen: Scenario[]; update: Up
         <NumberCell value={r.line.overagePct ?? null} placeholder={String(r.material.overagePct ?? 0)} label={`Overage of ${r.material.code}`}
           onCommit={(v) => set({ overagePct: v ?? undefined })} />
       </td>
-      {scen.map((s) => <td key={s.id} className="num strong" title={r.qty[s.id] != null ? String(r.qty[s.id]) : undefined}>{fmtQty(r.qty[s.id]) || (r.line.excluded ? "" : "–")}</td>)}
+      {scen.map((s) => <td key={s.id} className="num strong" title={r.qty[s.id] != null ? String(r.qty[s.id]) : undefined} data-full={r.qty[s.id] != null ? String(r.qty[s.id]) : undefined}>{fmtQty(r.qty[s.id]) || (r.line.excluded ? "" : "–")}</td>)}
+      {props.batched && <td className="bom-batch-cell">{r.batches && <span className="bom-batches" title={batchesNote(r.material, r.batches, scen)}>{batchCount(r.material, r.batches, scen)}</span>}</td>}
       <td>
         <TextCell value={r.line.note ?? ""} placeholder={manual ? "Reason (required)" : "Note"} label={`Note for ${r.material.code}`}
           onCommit={(v) => set({ note: v || undefined })} />
@@ -525,9 +538,9 @@ function BomLineRow(props: { r: BomRow; uo: string; scen: Scenario[]; update: Up
           : r.stored ? <button className="btn ghost small" onClick={() => update((p) => removeLine(p, r.uoId, r.material.id))} title={`Back to the automatic source (${SOURCE_LABEL[defaultLabel(r)]}) and default overage`}>Reset</button> : null}
       </td>
     </tr>
-    {r.backups.map((b) => <BackupRow key={`b${b.material.id}`} b={b} depth={0} scen={scen} onRemove={() => removeBackup(b)} />)}
+    {r.backups.map((b) => <BackupRow key={`b${b.material.id}`} b={b} depth={0} scen={scen} batched={props.batched} onRemove={() => removeBackup(b)} />)}
     {r.parts.map((part, i) => (
-      <PartRows key={`p${i}`} part={part} scen={scen} onBackups={props.onBackups} onRemoveBackup={removeBackup} onWhereUsed={props.onWhereUsed} />
+      <PartRows key={`p${i}`} part={part} scen={scen} batched={props.batched} onBackups={props.onBackups} onRemoveBackup={removeBackup} onWhereUsed={props.onWhereUsed} />
     ))}
     </>
   );
@@ -548,6 +561,12 @@ export function batchesNote(m: Material, b: Values, scen: Scenario[]): string {
   return `${size ? `Batches of ${fmtQty(size)} ${m.unit}` : "One batch per line"}${r?.wholeBatches && size ? ", made in full" : ""}: ${counts}`;
 }
 
+/** "10 / 0 × 200 L": batches per scenario and the batch size, for the Batches column. */
+export function batchCount(m: Material, b: Values, scen: Scenario[]): string {
+  const size = batchSize(recipeOf(m));
+  return `${scen.map((s) => (b[s.id] == null ? "–" : fmtQty(b[s.id]))).join(" / ")} × ${size ? `${fmtQty(size)} ${m.unit}` : "line"}`;
+}
+
 /** "+ Backup" next to a material name (shown on hover or focus); "Backups" when it has some. */
 function BackupLink(props: { m: Material; onClick: () => void }) {
   const has = !!props.m.backups?.length;
@@ -559,17 +578,17 @@ function BackupLink(props: { m: Material; onClick: () => void }) {
 }
 
 /** A component of a prepared material (recipe explosion), and its backups. */
-function PartRows(props: { part: BomPart; scen: Scenario[]; onBackups: (m: Material) => void; onRemoveBackup: (b: BomBackup) => void; onWhereUsed: (m: Material) => void }) {
+function PartRows(props: { part: BomPart; scen: Scenario[]; batched: boolean; onBackups: (m: Material) => void; onRemoveBackup: (b: BomBackup) => void; onWhereUsed: (m: Material) => void }) {
   const { part, scen } = props;
   const own = part.loop ? null : batchesFor(part.material, part.qty, scen);
+  const partFull = [part.material.name, `Recipe of ${part.parent.code}: ${partText(part)}`, own ? batchesNote(part.material, own, scen) : "", part.loop ?? ""].filter(Boolean).join("\n");
   return (
     <>
       <tr className={`bom-sub bom-part${part.loop ? " row-attn" : ""}`}>
         <td className="mono"><span className="sub-code" style={{ paddingLeft: (part.depth - 1) * 10 }}>↳ <button className="linkish code-link" onClick={() => props.onWhereUsed(part.material)} title={`Where is ${part.material.code} used?`}>{part.material.code}</button></span></td>
-        <td>
+        <td className={`bom-mat${part.loop ? " mark mark-issue" : ""}`} title={partFull} data-full={partFull.replace(/\n/g, " · ")}>
           <div>{part.material.name}{!part.loop && <BackupLink m={part.material} onClick={() => props.onBackups(part.material)} />}</div>
           <div className="bom-note">Recipe of <span className="mono">{part.parent.code}</span>: {partText(part)}</div>
-          {own && <div className="bom-batches">{batchesNote(part.material, own, scen)}</div>}
           {part.loop && <div className="bom-issue">{part.loop}</div>}
         </td>
         <td className="mono">{part.material.unit}</td>
@@ -577,21 +596,22 @@ function PartRows(props: { part: BomPart; scen: Scenario[]; onBackups: (m: Mater
         {scen.map((s) => <td key={s.id} className="num">{fmtQty(part.base[s.id]) || "–"}</td>)}
         <td className="num muted" title="The component's default overage (Materials screen)">{part.overagePct ? part.overagePct : ""}</td>
         {scen.map((s) => <td key={s.id} className="num strong">{part.loop ? "" : fmtQty(part.qty[s.id]) || "–"}</td>)}
+        {props.batched && <td className="bom-batch-cell">{own && <span className="bom-batches" title={batchesNote(part.material, own, scen)}>{batchCount(part.material, own, scen)}</span>}</td>}
         <td />
         <td />
       </tr>
-      {part.backups.map((b) => <BackupRow key={`b${b.material.id}`} b={b} depth={part.depth} scen={scen} onRemove={() => props.onRemoveBackup(b)} />)}
+      {part.backups.map((b) => <BackupRow key={`b${b.material.id}`} b={b} depth={part.depth} scen={scen} batched={props.batched} onRemove={() => props.onRemoveBackup(b)} />)}
     </>
   );
 }
 
 /** An alternate material under the line (or part) of its primary: its quantity is never in the totals. */
-function BackupRow(props: { b: BomBackup; depth: number; scen: Scenario[]; onRemove: () => void }) {
+function BackupRow(props: { b: BomBackup; depth: number; scen: Scenario[]; batched: boolean; onRemove: () => void }) {
   const { b, scen } = props;
   return (
     <tr className="bom-sub bom-backup">
       <td className="mono"><span className="sub-code" style={{ paddingLeft: props.depth * 12 }}>⇄ {b.material.code}</span></td>
-      <td>
+      <td className={`bom-mat${b.unitHint ? " mark mark-issue" : ""}`} title={`${b.material.name}\nBackup for ${b.primary.code}${b.unitHint ? `\n${b.unitHint}` : ""}`}>
         <div>{b.material.name}</div>
         <div className="bom-note">Backup for <span className="mono">{b.primary.code}</span>{b.ratio !== 1 ? ` · ${fmtQty(b.ratio)} ${b.material.unit} per ${b.primary.unit}` : ""} · not in the totals</div>
         {b.unitHint && <div className="bom-issue">{b.unitHint}</div>}
@@ -601,6 +621,7 @@ function BackupRow(props: { b: BomBackup; depth: number; scen: Scenario[]; onRem
       {scen.map((s) => <td key={s.id} />)}
       <td />
       {scen.map((s) => <td key={s.id} className="num backup-qty">{fmtQty(b.qty[s.id]) || "–"}</td>)}
+      {props.batched && <td />}
       <td className="bom-note">{b.note ?? ""}</td>
       <td className="actions-cell"><button className="btn ghost small" onClick={props.onRemove} aria-label={`Remove backup ${b.material.code} for ${b.primary.code}`}>Remove</button></td>
     </tr>
