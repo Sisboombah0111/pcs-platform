@@ -76,7 +76,7 @@ export function ReplaceDialog(props: { project: Project; materialId: string; onC
           )}
           <fieldset className="export-box" style={{ marginTop: 10 }}>
             <legend>Then {from.code}</legend>
-            <label className="check"><input type="radio" name="after" checked={after === "obsolete"} onChange={() => setAfter("obsolete")} /> <span><b>Mark obsolete</b>, replaced by {to?.code ?? "…"} (recommended: it stays in the list for reference)</span></label>
+            <label className="check"><input type="radio" name="after" checked={after === "obsolete"} onChange={() => setAfter("obsolete")} /> <span><b>Mark obsolete</b>, replaced by {to?.code ?? "…"} (recommended: it stays in the list for reference, and BOM revisions show the change as replaced)</span></label>
             <label className="check"><input type="radio" name="after" checked={after === "delete"} onChange={() => setAfter("delete")} /> <span>Delete it</span></label>
             <label className="check"><input type="radio" name="after" checked={after === "keep"} onChange={() => setAfter("keep")} /> <span>Keep it as it is</span></label>
           </fieldset>

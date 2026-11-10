@@ -12,6 +12,7 @@ import {
   type OpStep,
   type BomLine,
   type BomRevision,
+  type MaterialSnap,
   type ScenarioValues,
   type LabelMode,
   type MassBalance,
@@ -247,6 +248,16 @@ function readRevisions(list: unknown[]): BomRevision[] {
     if (typeof r.note === "string" && r.note) rev.note = r.note;
     if (typeof r.createdBy === "string" && r.createdBy) rev.createdBy = r.createdBy;
     if (typeof r.mbFile === "string" && r.mbFile) rev.mbFile = r.mbFile;
+    // N5.6: the materials' details as they were (older revisions do not have them).
+    if (Array.isArray(r.materials)) {
+      rev.materials = r.materials.filter(isObj).filter((m) => typeof m.mid === "string" && typeof m.code === "string").map((m) => {
+        const snap: MaterialSnap = { mid: m.mid as string, code: m.code as string, name: s(m.name), unit: s(m.unit) };
+        for (const k of ["category", "spec", "supplier", "partNo", "replacedBy"] as const) if (typeof m[k] === "string" && m[k]) snap[k] = m[k] as string;
+        if (typeof m.packSize === "number" && Number.isFinite(m.packSize)) snap.packSize = m.packSize;
+        if (m.status === "review" || m.status === "obsolete") snap.status = m.status;
+        return snap;
+      });
+    }
     return rev;
   });
 }

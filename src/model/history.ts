@@ -7,6 +7,10 @@
  */
 import type { ChangeEntry, Equipment, Material, OpStep, Project } from "./types";
 import { newId } from "./ids";
+import { changeText, detailChanges, detailsOf } from "./materialDiff";
+
+/** Changed materials logged detail by detail (before → after); more in one line by code. */
+const DETAILED = 10;
 
 export const TRACKED = ["materials", "bom", "equipment", "operations", "mb"] as const;
 export type TrackedKey = (typeof TRACKED)[number];
@@ -94,19 +98,27 @@ export function describeChange(before: Parts, after: Parts, uoCode: (id: string)
   const out: string[] = [];
   if (before.materials && after.materials) {
     const d = byId<Material>(before.materials, after.materials);
-    if (d.added.length) out.push(`Materials added: ${list(d.added.map((m) => m.code || "(no code)"))}`);
-    if (d.removed.length) out.push(`Materials deleted: ${list(d.removed.map((m) => m.code || "(no code)"))}`);
+    // A few by code and name (“CON-0011 “NovaSeptum … C-Flex””), many by code.
+    const named = (ms: Material[]) => (ms.length <= 3 ? ms.map((m) => `${m.code || "(no code)"} “${m.name}”`).join(", ") : list(ms.map((m) => m.code || "(no code)")));
+    if (d.added.length) out.push(`Materials added: ${named(d.added)}`);
+    if (d.removed.length) out.push(`Materials deleted: ${named(d.removed)}`);
     if (d.changed.length) {
+      // N5.6: each detail before → after (name, spec, supplier, part no., status, replaced by …).
+      const all = [...after.materials, ...before.materials];
+      const codeOf = (id: string) => all.find((m) => m.id === id)?.code ?? "?";
       const parts = d.changed.map(([a, b]) => {
-        const what: string[] = [];
-        if (a.code !== b.code) what.push(`code ${a.code} → ${b.code}`);
-        for (const k of ["name", "unit", "category", "spec", "note", "overagePct", "status"] as const) if (!same(a[k], b[k])) what.push(k === "overagePct" ? "overage" : k);
-        if (!same(a.recipe, b.recipe)) what.push("recipe");
-        if (!same(a.backups, b.backups)) what.push("backups");
-        if (!same(a.replacedBy, b.replacedBy) && !what.includes("status")) what.push("replaced by");
-        return `${b.code}${what.length ? ` (${what.join(", ")})` : ""}`;
+        const what = detailChanges(detailsOf(a, all), detailsOf(b, all)).map((c) => changeText(c));
+        if (!same(a.recipe, b.recipe)) what.push("recipe changed");
+        if (!same(a.backups, b.backups)) {
+          const ids = (m: Material) => new Set((m.backups ?? []).map((x) => x.materialId));
+          const [x, y] = [ids(a), ids(b)];
+          const plus = [...y].filter((i) => !x.has(i)).map(codeOf), minus = [...x].filter((i) => !y.has(i)).map(codeOf);
+          what.push(plus.length || minus.length ? [...plus.map((c) => `backup ${c} added`), ...minus.map((c) => `backup ${c} removed`)].join("; ") : "backups edited");
+        }
+        return { code: b.code, what };
       });
-      out.push(`Materials changed: ${list(parts, 4)}`);
+      for (const c of parts.slice(0, DETAILED)) out.push(`Material ${c.code}: ${c.what.join("; ") || "changed"}`);
+      if (parts.length > DETAILED) out.push(`Materials changed, more: ${list(parts.slice(DETAILED).map((c) => c.code))}`);
     }
   }
   if (before.bom && after.bom) {

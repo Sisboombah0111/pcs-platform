@@ -28,6 +28,8 @@
   --warn-soft: #fff4ce;
   --err: #a4262c;
   --err-soft: #fde7e9;
+  --info: #005a9e;             /* a material replaced by another (BOM changes) */
+  --info-soft: #deecf9;
   --font: "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
   --mono: ui-monospace, "Cascadia Mono", Consolas, "SFMono-Regular", monospace;
   /* text sizes: body 16 px, tables and buttons 15 px, the smallest text 13 px */
@@ -512,10 +514,12 @@ table.grid[style*="table-layout: fixed"] td { overflow-wrap: anywhere; }
 .bom-change.added { color: var(--ok); }
 .bom-change.changed { color: var(--warn); }
 .bom-change.removed { color: var(--err); }
+.bom-change.replaced { color: var(--info); }
 tr.bom-removed td { background: var(--err-soft); color: var(--muted); border-top-style: dashed; }
 .chip.chg.added { background: var(--ok-soft); color: var(--ok); }
 .chip.chg.removed { background: var(--err-soft); color: var(--err); }
 .chip.chg.changed { background: var(--warn-soft); color: var(--warn); }
+.chip.chg.replaced { background: var(--info-soft); color: var(--info); }
 .compare-table td.num { white-space: nowrap; }
 tr.flash td { animation: flash 1.6s ease-out; }
 @keyframes flash { 0% { background: #fff1b8; } 100% { background: transparent; } }

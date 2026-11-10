@@ -21,8 +21,8 @@ describe("purchasing: supplier, part no., pack size", () => {
     expect(plan.errors.map((e) => e.message)).toEqual(["BAD: Pack size '0' is not a number above 0 (in the material's unit, e.g. 25 for a 25 kg bag)."]);
     const [m] = applyImport([], plan);
     expect([m.supplier, m.partNo, m.packSize]).toEqual(["Merck", "1.06404.5000", 25]);
-    expect(MATERIAL_EXPORT_HEADER.slice(-3)).toEqual(["Supplier", "Part no.", "Pack size"]);
-    expect(materialToRow(m).slice(-3)).toEqual(["Merck", "1.06404.5000", 25]);
+    expect(MATERIAL_EXPORT_HEADER.slice(9, 12)).toEqual(["Supplier", "Part no.", "Pack size"]);
+    expect(materialToRow(m).slice(9, 12)).toEqual(["Merck", "1.06404.5000", 25]);
     const again = planMaterialImport([["Code", "Name", "Unit", "Pack size"], ["NACL", "Sodium chloride", "kg", "50"]], [m]);
     expect(again.update[0].changes).toEqual(["pack 25 → 50 kg"]);
     const p = createProject();

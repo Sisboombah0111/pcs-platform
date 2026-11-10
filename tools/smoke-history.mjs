@@ -120,7 +120,7 @@ check("undo refused when the equipment list changed on the PFD since", /cannot b
 await page.getByRole("button", { name: "Changes", exact: true }).click();
 await wait(300);
 const log = (await text(".changes-table")).replace(/\n/g, " | ");
-check("change log: who and what, undo and redo lines", /Tester/.test(log) && /Materials changed: FLT-0001 \(name\)/.test(log) && /Undo: Materials/.test(log) && /Steps of CEX: 0 → 9/.test(log) && /Replace FLT-0002 with FLT-0006/.test(log) && /Equipment changed: XV-101/.test(log) && /PFD\s+\|\s+Equipment added: BAG-9/.test(log), log.slice(0, 300));
+check("change log: who and what, undo and redo lines", /Tester/.test(log) && /Material FLT-0001: name “[^”]+” → “[^”]+ \(old\)”/.test(log) && /Undo: Materials/.test(log) && /Steps of CEX: 0 → 9/.test(log) && /Replace FLT-0002 with FLT-0006/.test(log) && /Equipment changed: XV-101/.test(log) && /PFD\s+\|\s+Equipment added: BAG-9/.test(log), log.slice(0, 300));
 const [dlx] = await Promise.all([page.waitForEvent("download"), page.locator(".dialog").getByRole("button", { name: "Export to Excel" }).click()]);
 const wb = new ExcelJS.Workbook();
 await wb.xlsx.readFile(await dlx.path());

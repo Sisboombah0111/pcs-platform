@@ -60,7 +60,7 @@ describe("change log", () => {
       equipment: [{ id: "e", tag: "XV-1", type: "valve" }],
     };
     const lines = describeChange(p0, p1, (id) => (id === "u1" ? "PROA" : "?"));
-    expect(lines).toEqual(["Materials added: B-1", "Materials changed: A-2 (code A-1 → A-2, status)", "Equipment added: XV-1", "Steps of PROA: 0 → 1"]);
+    expect(lines).toEqual(["Materials added: B-1 “Beta”", "Material A-2: code A-1 → A-2; status In use → Obsolete", "Equipment added: XV-1", "Steps of PROA: 0 → 1"]);
     expect(describeUos(p0.uos, [...p0.uos, { id: "u2", code: "CEX", name: "Cation exchange", order: 2 }])).toEqual(["Unit operation added: CEX Cation exchange"]);
     let log = addLog([], logLine("Materials", ["a"], "Kim", "2026-11-04T00:00:00Z"));
     log = addLog(log, logLine("BOM", ["b"], undefined, "2026-11-04T00:01:00Z"));

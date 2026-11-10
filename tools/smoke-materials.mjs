@@ -101,7 +101,7 @@ check("BOM: BUF-1002W with its values", /900\s+6,600/.test((await line("PROA", "
 await page.locator(".bom-tools .linkish").click();
 await page.getByRole("button", { name: "Lines per unit operation" }).click();
 dlg = await text(".dialog");
-check("compare with the revision: the renamed code is a change, the replaced filter removed + added", /Changed\s+PROA\s+BUF-1002W[\s\S]*code BUF-1002 → BUF-1002W/.test(dlg) && /Removed\s+PROA\s+FLT-0001/.test(dlg) && /Added\s+PROA\s+FLT-0011/.test(dlg), dlg.replace(/\n/g, " | ").slice(0, 500));
+check("compare with the revision: the renamed code is a change, the replaced filter one replaced row (N5.6)", /Changed\s+PROA\s+BUF-1002W[\s\S]*code BUF-1002 → BUF-1002W/.test(dlg) && /Replaced\s+PROA\s+FLT-0001 → FLT-0011/.test(dlg) && !/Removed\s+PROA\s+FLT-0001/.test(dlg), dlg.replace(/\n/g, " | ").slice(0, 500));
 await page.getByRole("button", { name: "Close", exact: true }).click();
 
 // ---- replace a filter linked on the PFD: links move, the drawing reloads --------------------------------------------------

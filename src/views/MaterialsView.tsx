@@ -183,7 +183,7 @@ export function MaterialsView(props: {
 
   const exportFile = async () => {
     const blob = await writeWorkbook([
-      { name: "Materials", header: MATERIAL_EXPORT_HEADER, rows: materials.map((m) => materialToRow(m, materials)), widths: [14, 36, 8, 14, 18, 10, 24, 13, 13, 22, 16, 10] },
+      { name: "Materials", header: MATERIAL_EXPORT_HEADER, rows: materials.map((m) => materialToRow(m, materials)), widths: [14, 36, 8, 14, 18, 10, 24, 13, 13, 22, 16, 10, 13] },
       { name: "Recipes", header: RECIPE_EXPORT_HEADER, rows: recipeRows(materials), widths: [14, 36, 8, 7, 16, 32, 10, 14, 11, 11, 13, 40] },
       { name: "Backups", header: BACKUP_EXPORT_HEADER, rows: backupRows(materials), widths: [14, 36, 14, 36, 8, 30] },
     ]);

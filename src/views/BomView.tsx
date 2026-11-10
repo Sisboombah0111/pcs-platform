@@ -11,8 +11,8 @@ import { writeWorkbook } from "../xlsx/workbook";
 import { BackupsDialog } from "./MaterialRefs";
 import { HeadRow, useColumns, type Head } from "../ui/resize";
 import { Workbook } from "../ui/Workbook";
-import { addRevision, changesByLine, compareBom, deleteRevision, latestRevision, makeRevision, type Change, type Comparison } from "../bom/revisions";
-import { CompareDialog, RevisionsDialog, SaveRevisionDialog, beforeAfter, comparisonSheets, deltaText, nowState, when } from "./BomRevisions";
+import { addRevision, changesByLine, compareBom, countSum, countText, deleteRevision, latestRevision, makeRevision, type Change, type Comparison } from "../bom/revisions";
+import { CompareDialog, RevisionsDialog, SaveRevisionDialog, beforeAfter, changeMark, comparisonSheets, nowState, when } from "./BomRevisions";
 import { WhereUsedDialog, type GoPlace } from "./WhereUsed";
 import { ReplaceDialog, runReplace, type Transform } from "./ReplaceMaterial";
 
@@ -45,7 +45,7 @@ export function BomView(props: { project: Project; update: Update; confirm: Conf
   const revisions = project.bom.revisions ?? [];
   const [baseId, setBaseId] = useState<string>(() => store.get("base") ?? "latest");
   const base = baseId === "none" ? null : (revisions.find((r) => r.id === baseId) ?? latestRevision(project));
-  const cmp = useMemo(() => (base ? compareBom(base, nowState(bom)) : null), [base, bom]);
+  const cmp = useMemo(() => (base ? compareBom(base, nowState(bom, project.materials), project.materials) : null), [base, bom, project.materials]);
   const changes = useMemo(() => (cmp ? changesByLine(cmp) : null), [cmp]);
   const [dialog, setDialog] = useState<null | { kind: "save" } | { kind: "list" } | { kind: "compare"; cmp: Comparison }>(null);
   const chooseBase = (id: string) => { setBaseId(id); store.set("base", id); };
@@ -93,7 +93,7 @@ export function BomView(props: { project: Project; update: Update; confirm: Conf
   const exportExcel = async () => {
     const blob = await writeWorkbook([...bomSheets(bom, project, cmp ? { label: cmp.from, at: base!.createdAt, count: cmp.count } : null), ...(cmp ? comparisonSheets(cmp) : [])]);
     const date = new Date().toISOString().slice(0, 10);
-    const unchanged = !!cmp && !cmp.count.added && !cmp.count.removed && !cmp.count.changed && !cmp.totals.some((c) => c.kind !== "same");
+    const unchanged = !!cmp && !countSum(cmp.count) && !cmp.totals.some((c) => c.kind !== "same") && !cmp.materials.length;
     const rev = unchanged ? ` ${cmp!.from}` : base ? ` after ${base.label}` : "";
     downloadBlob(blob, `${project.meta.name} BOM${rev} ${date}.xlsx`.replace(/[\\/:*?"<>|]/g, "-"));
   };
@@ -194,7 +194,7 @@ export function BomView(props: { project: Project; update: Update; confirm: Conf
                 {!revisions.length && <span className="hint">No revision yet: “Save revision…” keeps the BOM as it is now; later changes are marked against it.</span>}
                 {cmp && (
                   <button className="linkish" onClick={() => setDialog({ kind: "compare", cmp })} title="See every change">
-                    {cmp.count.added + cmp.count.removed + cmp.count.changed === 0 ? `No line changed since ${cmp.from}` : `${cmp.count.added} added · ${cmp.count.removed} removed · ${cmp.count.changed} changed since ${cmp.from}`}
+                    {countSum(cmp.count) === 0 ? `No line changed since ${cmp.from}` : `${countText(cmp.count)} since ${cmp.from}`}
                   </button>
                 )}
               </div>
@@ -262,8 +262,8 @@ export function BomView(props: { project: Project; update: Update; confirm: Conf
         <RevisionsDialog project={project} bom={bom} onClose={() => setDialog(null)}
           onCompare={(fromId, toId) => {
             const a = revisions.find((r) => r.id === fromId)!;
-            const b = toId === "Now" ? nowState(bom) : revisions.find((r) => r.id === toId)!;
-            setDialog({ kind: "compare", cmp: compareBom(a, b) });
+            const b = toId === "Now" ? nowState(bom, project.materials) : revisions.find((r) => r.id === toId)!;
+            setDialog({ kind: "compare", cmp: compareBom(a, b, project.materials) });
           }}
           onDelete={async (r) => {
             if (!(await props.confirm({ title: `Delete ${r.label}?`, body: `The saved state of the BOM from ${when(r.createdAt)} is removed from the project. The BOM itself does not change.`, confirmLabel: "Delete revision", danger: true }))) return;
@@ -471,7 +471,7 @@ function BomLineRow(props: { r: BomRow; uo: string; scen: Scenario[]; batched: b
     if (src === "MB") return r.mb ? scen.filter((s) => r.mb![s.id] != null).map((s) => `${s.name.charAt(0)} ${fmtQty(r.mb![s.id])}`).join(" · ") : "";
     return r.pfd != null ? fmtQty(r.pfd) : "";
   };
-  const changeText = props.change ? (props.change.kind === "added" ? `New since ${props.base}` : props.change.kind === "removed" ? `Not counted since ${props.base}` : `${deltaText(props.change, scen)} since ${props.base}`) : "";
+  const changeText = props.change ? changeMark(props.change, props.base, scen) : "";
   // The whole cell in the tooltip and the formula bar (the cell itself is one line, as in Excel).
   const fullText = [r.material.name, r.parts.length ? "Prepared in-house (recipe below)" : "", r.batches ? batchesNote(r.material, r.batches, scen) : "", changeText, ...r.issues, ...r.notes].filter(Boolean).join("\n");
   const removeBackup = async (b: BomBackup) => {
@@ -499,8 +499,8 @@ function BomLineRow(props: { r: BomRow; uo: string; scen: Scenario[]; batched: b
           {!r.line.excluded && <BackupLink m={r.material} onClick={() => props.onBackups(r.material)} />}
         </div>
         {props.change && (
-          <div className={`bom-change ${props.change.kind}`} title={props.change.kind === "changed" ? `${props.base} → now: ${scen.map((s) => `${s.name} ${beforeAfter(props.change!, s.id)}`).join("; ")}` : undefined}>
-            {props.change.kind === "added" ? `New since ${props.base}` : props.change.kind === "removed" ? `Not counted since ${props.base} (was ${scen.map((s) => fmtQty(props.change!.before?.[s.id]) || "–").join(" / ")})` : `${deltaText(props.change, scen)} since ${props.base}`}{props.change.notes.length ? ` · ${props.change.notes.join("; ")}` : ""}
+          <div className={`bom-change ${props.change.kind}`} title={props.change.kind === "changed" || props.change.kind === "replaced" ? `${props.base} → now: ${scen.map((s) => `${s.name} ${beforeAfter(props.change!, s.id)}`).join("; ")}${props.change.was ? ` · was ${props.change.was.code} ${props.change.was.name}` : ""}` : undefined}>
+            {props.change.kind === "removed" ? `Not counted since ${props.base} (was ${scen.map((s) => fmtQty(props.change!.before?.[s.id]) || "–").join(" / ")})` : changeMark(props.change, props.base, scen)}{props.change.notes.length ? ` · ${props.change.notes.join("; ")}` : ""}
           </div>
         )}
         {r.issues.map((t, i) => <div key={i} className="bom-issue">{t}</div>)}
@@ -662,7 +662,7 @@ function TextCell(props: { value: string; onCommit: (v: string) => void; label: 
  * The BOM as sheets: every line (with the components of prepared materials and the backups under it),
  * the totals to buy, what is prepared in-house, and the backup materials.
  */
-export function bomSheets(bom: BomResult, project: Project, since: { label: string; at: string; count: { added: number; removed: number; changed: number } } | null = null) {
+export function bomSheets(bom: BomResult, project: Project, since: { label: string; at: string; count: Comparison["count"] } | null = null) {
   const scen = bom.scenarios;
   const lines: (string | number | null)[][] = [];
   // Batches: per-scenario columns at the end of the BOM sheet (and of Prepared) when a recipe counts in batches.
@@ -728,7 +728,7 @@ export function bomSheets(bom: BomResult, project: Project, since: { label: stri
         ["Project", project.meta.name],
         ["Exported", new Date().toISOString().slice(0, 16).replace("T", " ")],
         ["Revisions", (project.bom.revisions ?? []).map((r) => `${r.label} (${r.createdAt.slice(0, 10)})`).join(", ") || "none saved"],
-        ...(since ? [["Changes since", `${since.label} (${since.at.slice(0, 16).replace("T", " ")}): ${since.count.added} added, ${since.count.removed} removed, ${since.count.changed} changed lines; see the Changes sheets`]] : []),
+        ...(since ? [["Changes since", `${since.label} (${since.at.slice(0, 16).replace("T", " ")}): ${countText(since.count, ", ")} lines; see the Changes sheets (lines, totals, materials)`]] : []),
         ["Mass balance", project.mb.current ? `${project.mb.current.fileName ?? ""} (applied ${project.mb.current.importedAt.slice(0, 16).replace("T", " ")})` : "none applied"],
         ["Quantity", "source value × (1 + overage / 100); MB = Σ PCS_LINK material rows of the UO, PFD = Σ counts linked on its shapes"],
         ["Recipe rows", "components of a material made in-house: line quantity × recipe quantity ÷ recipe amount, + the component's default overage; counted in Totals, the prepared material in Prepared"],

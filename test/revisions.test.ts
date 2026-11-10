@@ -34,7 +34,7 @@ describe("BOM revisions", () => {
   it("compare: nothing changed, then an overage, a removed line and a manual line", () => {
     let p = load();
     const a = makeRevision(p, computeBom(p), { now: "2026-11-04T01:00:00Z" });
-    expect(compareBom(a, now(p)).count).toEqual({ added: 0, removed: 0, changed: 0 });
+    expect(compareBom(a, now(p)).count).toEqual({ added: 0, removed: 0, replaced: 0, changed: 0 });
     // + 10 % on the PROA wash buffer, the CEX strip not counted, a hand-entered line in STOR.
     p = setLine(p, row(p, "PROA", "BUF-1002"), { overagePct: 10 });
     p = setLine(p, row(p, "CEX", "BUF-2003"), { excluded: true });

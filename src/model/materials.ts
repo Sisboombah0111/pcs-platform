@@ -176,9 +176,12 @@ export function parseCsv(text: string): string[][] {
 
 export function materialToRow(m: Material, all?: readonly Material[]): (string | number | undefined)[] {
   const by = m.replacedBy ? all?.find((x) => x.id === m.replacedBy)?.code : undefined;
-  return [m.code, m.name, m.unit, m.category, m.spec, m.overagePct, m.note, STATUS_LABEL[m.status ?? "active"], by, m.supplier, m.partNo, m.packSize];
+  // N5.6: the other way round too: the materials this one replaced (marked obsolete, replaced by it).
+  const replaces = all?.filter((x) => x.replacedBy === m.id).map((x) => x.code).join(", ") || undefined;
+  return [m.code, m.name, m.unit, m.category, m.spec, m.overagePct, m.note, STATUS_LABEL[m.status ?? "active"], by, m.supplier, m.partNo, m.packSize, replaces];
 }
-export const MATERIAL_EXPORT_HEADER = ["Code", "Name", "Unit", "Category", "Spec", "Overage %", "Note", "Status", "Replaced by", "Supplier", "Part no.", "Pack size"];
+/** Import reads these by name; Replaced by and Replaces are only shown (Replace… sets them). */
+export const MATERIAL_EXPORT_HEADER = ["Code", "Name", "Unit", "Category", "Spec", "Overage %", "Note", "Status", "Replaced by", "Supplier", "Part no.", "Pack size", "Replaces"];
 
 // ---- recipes and backups as sheets (export and import) ------------------------------------------
 

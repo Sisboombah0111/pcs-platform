@@ -220,6 +220,23 @@ export interface BomRevision {
   lines: { uo: string; uoName: string; code: string; name: string; unit: string; category?: string; source: string; qty: ScenarioValues; batches?: ScenarioValues; mid?: string; uoId?: string }[];
   /** Totals per material: to buy (buy), prepared in-house (prep). */
   totals: { code: string; name: string; unit: string; category?: string; kind: "buy" | "prep"; qty: ScenarioValues; mid?: string }[];
+  /** The materials on the BOM as they were (saved since N5.6): spec, supplier, part no. … to list material changes. */
+  materials?: MaterialSnap[];
+}
+
+/** A material as a BOM revision keeps it (N5.6). `replacedBy` is the code of the material that replaced it. */
+export interface MaterialSnap {
+  mid: string;
+  code: string;
+  name: string;
+  unit: string;
+  category?: string;
+  spec?: string;
+  supplier?: string;
+  partNo?: string;
+  packSize?: number;
+  status?: MaterialStatus;
+  replacedBy?: string;
 }
 
 export interface PfdView {
