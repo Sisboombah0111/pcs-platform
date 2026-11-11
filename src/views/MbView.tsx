@@ -402,6 +402,7 @@ export function MbView(props: {
                   <span className={`chip ${result.summary.errors ? "err" : "ok"}`}>{result.summary.errors} error{result.summary.errors === 1 ? "" : "s"}</span>
                   <span className={`chip ${result.summary.warnings ? "warn" : ""}`}>{result.summary.warnings} warning{result.summary.warnings === 1 ? "" : "s"}</span>
                   <span className="chip">{result.summary.flowRows} flow rows · {result.summary.materialRows} material rows</span>
+                  {result.headerRow > 1 && <span className="chip" title={`Rows above row ${result.headerRow} are read as a title and left out`}>Headers in row {result.headerRow}</span>}
                 </div>
               )}
             </div>

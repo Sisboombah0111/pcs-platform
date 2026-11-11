@@ -3,6 +3,11 @@
  *
  *   StreamID | MatCode | Unit | Sending | Receiving | Note        (row 1 = headers, any column order)
  *
+ * N5.6.1: the headers may sit lower (a title row above them): the first of rows 1–10 that has them.
+ * Merged cells: a merged StreamID or Unit reads as that value on every row of the block (fine); merged
+ * quantities are an error (every row would get the same number); a quantity formula that points inside a
+ * merged block, not at its top-left cell, reads an empty cell (0 in Excel): an error when it reads 0.
+ *
  * A row without MatCode is the stream's flow row (its value goes on the PFD label); a row with a
  * MatCode is a material row (its value goes to that UO's BOM). Rules:
  *   V1 sheet, required headers and cells        V2 StreamID is a stream on the PFD
@@ -15,7 +20,7 @@
  */
 import { parseStreamId } from "../model/ids";
 import type { MbRow, MbSnapshot, Scenario } from "../model/types";
-import type { CellInfo, WorkbookData } from "../xlsx/workbook";
+import { addressOf, parseAddress, rangeText, type CellInfo, type CellRange, type WorkbookData } from "../xlsx/workbook";
 
 export const LINK_SHEET = "PCS_LINK";
 export const LINK_HEADERS = ["StreamID", "MatCode", "Unit", "Sending", "Receiving", "Note"];
@@ -49,6 +54,8 @@ export interface LinkRow {
 export interface LinkResult {
   ok: boolean;
   sheetNames: string[];
+  /** The Excel row the headers are in (1 unless there is a title above them). */
+  headerRow: number;
   /** Scenario ids whose column is in the sheet. */
   scenarios: string[];
   columns: Record<string, string>;
@@ -90,7 +97,7 @@ export function checkLinkSheet(wb: WorkbookData, ctx: LinkContext): LinkResult {
   const add = (level: LinkIssue["level"], rule: Rule, row: number | null, col: string | null, message: string, streamId?: string) =>
     issues.push({ level, rule, row, col, message, ...(streamId ? { streamId } : {}) });
   const out: LinkResult = {
-    ok: false, sheetNames: wb.sheetNames, scenarios: [], columns: {}, rows: [], issues,
+    ok: false, sheetNames: wb.sheetNames, headerRow: 1, scenarios: [], columns: {}, rows: [], issues,
     summary: { errors: 0, warnings: 0, rows: 0, flowRows: 0, materialRows: 0, streams: 0 },
   };
   const grid = wb.sheet(LINK_SHEET);
@@ -101,33 +108,40 @@ export function checkLinkSheet(wb: WorkbookData, ctx: LinkContext): LinkResult {
     return finish(out);
   }
 
-  // Headers in row 1, any order.
+  // Headers in row 1, any order; or in a lower row with a title above (the first of rows 1–10 that has them).
   const keys = ["streamId", "matCode", "unit", ...ctx.scenarios.map((s) => `s:${s.id}`), "note"] as const;
   const headerOf: Record<string, string> = { streamId: "StreamID", matCode: "MatCode", unit: "Unit", note: "Note" };
   for (const s of ctx.scenarios) headerOf[`s:${s.id}`] = s.column;
   const required = new Set(["streamId", "unit", `s:${ctx.scenarios[0]?.id}`]);
+  const hasHeaders = (r: number) => {
+    const found = new Set(Array.from({ length: grid.colCount }, (_, c) => norm(textOf(grid.cell(r, c)))));
+    return [...required].every((k) => found.has(norm(headerOf[k] ?? "")));
+  };
+  let h0 = 0;
+  for (let r = 0; r < Math.min(grid.rowCount, HEADER_ROWS); r++) if (hasHeaders(r)) { h0 = r; break; }
+  out.headerRow = h0 + 1;
   const colIndex: Record<string, number> = {};
   const seen: string[] = [];
   for (let c = 0; c < grid.colCount; c++) {
-    const h = textOf(grid.cell(0, c));
+    const h = textOf(grid.cell(h0, c));
     if (!h) continue;
     seen.push(h);
     for (const k of keys) {
       if (norm(h) !== norm(headerOf[k])) continue;
-      if (colIndex[k] !== undefined) add("error", "V1", 1, colLetter(c), `The '${headerOf[k]}' header appears twice.`);
+      if (colIndex[k] !== undefined) add("error", "V1", h0 + 1, colLetter(c), `The '${headerOf[k]}' header appears twice.`);
       else colIndex[k] = c;
     }
   }
   const missing = [...required].filter((k) => colIndex[k] === undefined).map((k) => headerOf[k]);
   if (missing.length) {
-    add("error", "V1", 1, null, `Row 1 is missing required headers: ${missing.join(", ")}. Headers found: ${seen.join(", ") || "none"}.`);
+    add("error", "V1", 1, null, `Row 1 is missing required headers: ${missing.join(", ")}. Headers found: ${[...new Set(seen)].join(", ") || "none"}. (No row among rows 1–${HEADER_ROWS} has them.)`);
     return finish(out);
   }
   for (const [k, c] of Object.entries(colIndex)) out.columns[k.replace(/^s:/, "")] = colLetter(c);
   const scen = ctx.scenarios.filter((s) => colIndex[`s:${s.id}`] !== undefined);
   out.scenarios = scen.map((s) => s.id);
   for (const s of ctx.scenarios.filter((x) => colIndex[`s:${x.id}`] === undefined)) {
-    add("warning", "V1", 1, null, `No '${s.column}' column for the scenario ${s.name}: it gets no values from this workbook. Add the column, or change the scenario's column (Mass Balance › Scenarios).`);
+    add("warning", "V1", h0 + 1, null, `No '${s.column}' column for the scenario ${s.name}: it gets no values from this workbook. Add the column, or change the scenario's column (Mass Balance › Scenarios).`);
   }
 
   const flowRowOf = new Map<string, number>();
@@ -135,7 +149,7 @@ export function checkLinkSheet(wb: WorkbookData, ctx: LinkContext): LinkResult {
   const known = ctx.streamIds ? new Set(ctx.streamIds) : null;
   const materials = ctx.materials ? new Map(ctx.materials.map((m) => [m.code, m])) : null;
 
-  for (let r = 1; r < grid.rowCount; r++) {
+  for (let r = h0 + 1; r < grid.rowCount; r++) {
     const excelRow = r + 1;
     const cell = (k: string): CellInfo => (colIndex[k] === undefined ? { kind: "empty", value: null } : grid.cell(r, colIndex[k]));
     const dataKeys = ["streamId", "matCode", "unit", ...scen.map((s) => `s:${s.id}`)];
@@ -171,6 +185,12 @@ export function checkLinkSheet(wb: WorkbookData, ctx: LinkContext): LinkResult {
           if (!Number.isFinite(v)) { add("error", "V5", excelRow, where, `${label} is not a finite number.`, streamId); ok = false; }
           else if (v < 0) { add("error", "V5", excelRow, where, `${label} is negative (${v}).`, streamId); ok = false; }
           else values[s.id] = v;
+          // A formula that points inside a merged block reads an empty cell (Excel keeps only the top-left value).
+          for (const hit of mergedRefs(wb, info.formula)) {
+            const fix = `Point it to ${hit.sheet}!${hit.topLeft}, the top-left cell, which holds the block's value.`;
+            if (v === 0) { add("error", "V5", excelRow, where, `${label} formula (${info.formula}) reads 0 from ${hit.sheet}!${hit.cell}, inside the merged cells ${hit.range}: only the top-left cell of merged cells holds a value. ${fix}`, streamId); ok = false; }
+            else add("warning", "V5", excelRow, where, `${label} formula (${info.formula}) points to ${hit.sheet}!${hit.cell}, inside the merged cells ${hit.range}. In Excel only the top-left cell of merged cells keeps a value. ${fix}`, streamId);
+          }
           break;
         }
         case "empty":
@@ -211,6 +231,21 @@ export function checkLinkSheet(wb: WorkbookData, ctx: LinkContext): LinkResult {
     out.rows.push({ row: excelRow, kind, streamId, matCode: matCode || null, unit, values, note: textOf(cell("note")), formulas, ok });
   }
 
+  // Merged quantities: every row (and column) of the block reads the same number, so it would be counted again.
+  const valueCols = scen.map((s) => ({ s, c: colIndex[`s:${s.id}`]! }));
+  for (const m of grid.merges ?? []) {
+    if (m.bottom <= h0) continue; // a title or header above the rows
+    const cols = valueCols.filter((v) => v.c >= m.left && v.c <= m.right);
+    if (!cols.length) continue;
+    const top = Math.max(m.top, h0 + 1);
+    const rows = m.bottom - top + 1;
+    const first = cols[0].c;
+    const v = grid.cell(top, first);
+    add("error", "V5", top + 1, colLetter(first),
+      `${cols.map((x) => x.s.column).join(" and ")} cells ${rangeText(m)} are merged: ${rows > 1 ? `each of rows ${top + 1}–${m.bottom + 1}` : "each column"} would read the same ${v.kind === "number" ? `number (${v.value})` : "value"} and count it again. Unmerge them and give each row its own value.`);
+    for (const r of out.rows) if (r.row - 1 >= top && r.row - 1 <= m.bottom) r.ok = false;
+  }
+
   // V8: a material counted from the MB for a UO must not also be counted from PFD links there.
   if (ctx.pfdLinks && ctx.uoOfStream) {
     for (const r of out.rows) {
@@ -229,6 +264,33 @@ export function checkLinkSheet(wb: WorkbookData, ctx: LinkContext): LinkResult {
     if (!flowRowOf.has(id)) add("warning", "V3", null, null, `${id} has no flow row (MatCode empty), so its PFD label shows no value.`, id);
   }
   return finish(out);
+}
+
+/** Rows looked at for the headers (a title above them is allowed). */
+const HEADER_ROWS = 10;
+
+/**
+ * Single-cell references in a formula (Calc!B3, 'MB calc'!$C$4, D7) that fall inside a merged block of their
+ * sheet but are not its top-left cell. Ranges (B2:B4) and functions are left alone.
+ */
+export function mergedRefs(wb: WorkbookData, formula: string | undefined): { sheet: string; cell: string; range: string; topLeft: string }[] {
+  if (!formula) return [];
+  const text = formula.replace(/^=/, "").replace(/"(?:[^"]|"")*"/g, '""');
+  const out: { sheet: string; cell: string; range: string; topLeft: string }[] = [];
+  const re = /(?:(?:'((?:[^']|'')+)'|([^\s'!(),:;=+\-*/^&<>"{}%]+))!)?(\$?[A-Za-z]{1,3}\$?\d+)/g;
+  for (const m of text.matchAll(re)) {
+    const start = m.index ?? 0, end = start + m[0].length;
+    const before = text[start - 1] ?? "", after = text[end] ?? "";
+    if (before === ":" || after === ":" || /[\w.$]/.test(before) || /[\w($!]/.test(after)) continue;
+    const name = m[1] !== undefined ? m[1].replace(/''/g, "'") : m[2] ?? LINK_SHEET;
+    const sheetName = wb.sheetNames.find((n) => n === name) ?? wb.sheetNames.find((n) => n.toLowerCase() === name.toLowerCase());
+    const at = parseAddress(m[3]);
+    if (!sheetName || !at) continue;
+    const block = (wb.sheet(sheetName)?.merges ?? []).find((b: CellRange) => at.row >= b.top && at.row <= b.bottom && at.col >= b.left && at.col <= b.right);
+    if (!block || (block.top === at.row && block.left === at.col)) continue;
+    out.push({ sheet: sheetName, cell: addressOf(at.row, at.col), range: rangeText(block), topLeft: addressOf(block.top, block.left) });
+  }
+  return out;
 }
 
 function finish(out: LinkResult): LinkResult {

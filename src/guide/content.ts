@@ -90,6 +90,7 @@ export const STEPS: Record<StepId, StepText> = {
       b("Columns: StreamID, MatCode, Unit, Sending, Receiving, Note.", "열: StreamID, MatCode, Unit, Sending, Receiving, Note."),
       b("Flow row: MatCode empty, one per stream (for the PFD label). Material row: MatCode filled in (for the BOM).", "흐름 행: MatCode 비움, 스트림마다 1개(PFD 라벨용). 물질 행: MatCode 기입(BOM용)."),
       b("Values can be formulas, e.g. =MB_calc!D12. Material rows use the unit of the material list.", "값은 수식도 됩니다(예: =MB_calc!D12). 물질 행의 단위는 자재 목록과 같아야 합니다."),
+      b("Merged cells: StreamID, MatCode or Unit merged down is read on every row; quantities are not merged (each row its own number); a formula points to the top-left cell of merged cells. A title row above the headers is fine.", "셀 병합: StreamID·MatCode·Unit을 세로 병합하면 각 행에 같은 값으로 읽힙니다. 수량은 병합하지 않습니다(행마다 따로). 수식은 병합된 칸의 왼쪽 위 칸을 가리킵니다. 헤더 위의 제목 행은 괜찮습니다."),
       b("GridCraft: Ctrl+S saves and checks. Excel: save, then Upload Excel workbook… or Replace….", "GridCraft: Ctrl+S로 저장과 검사. Excel: 저장한 뒤 Upload Excel workbook… 또는 Replace…."),
     ],
     go: { label: b("Open Mass Balance", "Mass Balance 열기"), to: "mb" },
@@ -226,6 +227,7 @@ export const RULES: { title: Bilingual; rows: [Bilingual, Bilingual][] }[] = [
       [b("Flow row", "흐름 행"), b("MatCode empty, one per stream → PFD label", "MatCode 비움, 스트림마다 1개 → PFD 라벨")],
       [b("Material row", "물질 행"), b("MatCode filled in, unit of the material list → BOM", "MatCode 기입, 자재 목록 단위 → BOM")],
       [b("Values", "값"), b("numbers or formulas (saved results), 0 or more", "숫자 또는 수식(저장된 결과), 0 이상")],
+      [b("Merged cells", "셀 병합"), b("StreamID, MatCode, Unit: read on each row · quantities: an error · formula into merged cells: point to the top-left cell", "StreamID·MatCode·Unit: 각 행에 같은 값 · 수량: 오류 · 병합 칸을 가리키는 수식: 왼쪽 위 칸으로")],
     ],
   },
   {

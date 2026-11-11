@@ -62,20 +62,26 @@ export async function rewriteMatCodes(bytes: Uint8Array, map: ReadonlyMap<string
   const sharedXml = (await zip.file("xl/sharedStrings.xml")?.async("string")) ?? "";
   const shared = [...sharedXml.matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) => texts(m[1]));
 
-  // The MatCode column, from the headers in row 1.
+  // The MatCode column, from the header row: row 1, or the first of rows 1–10 with StreamID and MatCode
+  // (a title above the headers; the same rows the check reads, N5.6.1).
   const cellRe = /<c\b([^>]*?)(\/>|>([\s\S]*?)<\/c>)/g;
-  const row1 = /<row\b[^>]*\br="1"[^>]*>([\s\S]*?)<\/row>/.exec(sheet)?.[1] ?? "";
-  let col: string | null = null;
-  for (const m of row1.matchAll(cellRe)) {
-    const ref = attr(m[1], "r") ?? "";
-    if (norm(cellText(m[1], m[3] ?? "", shared)) === "matcode") { col = /^[A-Z]+/.exec(ref)?.[0] ?? null; break; }
+  let col: string | null = null, headerRow = 0;
+  for (let r = 1; r <= 10 && !col; r++) {
+    const row = new RegExp(`<row\\b[^>]*\\br="${r}"[^>]*>([\\s\\S]*?)<\\/row>`).exec(sheet)?.[1] ?? "";
+    let mat: string | null = null, stream = false;
+    for (const m of row.matchAll(cellRe)) {
+      const t = norm(cellText(m[1], m[3] ?? "", shared));
+      if (t === "matcode") mat ??= /^[A-Z]+/.exec(attr(m[1], "r") ?? "")?.[0] ?? null;
+      if (t === "streamid") stream = true;
+    }
+    if (mat && (stream || r === 1)) { col = mat; headerRow = r; }
   }
-  if (!col) throw new Error(`The '${LINK_SHEET}' sheet has no MatCode header in row 1.`);
+  if (!col) throw new Error(`The '${LINK_SHEET}' sheet has no MatCode header in rows 1–10.`);
 
   const next = sheet.replace(cellRe, (whole, attrs: string, _end: string, body: string | undefined) => {
     const ref = attr(attrs, "r") ?? "";
     const m = /^([A-Z]+)(\d+)$/.exec(ref);
-    if (!m || m[1] !== col || m[2] === "1" || body === undefined) return whole;
+    if (!m || m[1] !== col || Number(m[2]) <= headerRow || body === undefined) return whole;
     const code = cellText(attrs, body, shared).trim();
     const to = map.get(code);
     if (to === undefined) return whole;

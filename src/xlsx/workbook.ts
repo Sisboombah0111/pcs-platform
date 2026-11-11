@@ -49,8 +49,39 @@ export interface SheetGrid {
   name: string;
   rowCount: number;
   colCount: number;
-  /** 0-based [row][col] */
+  /**
+   * 0-based [row][col]. Every cell of a merged block reads as the block's value (its top-left cell),
+   * as ExcelJS gives it: a StreamID merged down over three rows is that StreamID on each row.
+   */
   cell(r: number, c: number): CellInfo;
+  /** The merged blocks (N5.6.1), to tell a merged cell from one typed three times. */
+  merges?: CellRange[];
+}
+
+/** A block of cells, 0-based, inclusive. */
+export interface CellRange { top: number; left: number; bottom: number; right: number }
+
+/** "D3" → 0-based row and column; null when it is not a cell address. */
+export function parseAddress(a: string): { row: number; col: number } | null {
+  const m = /^\$?([A-Z]{1,3})\$?(\d+)$/.exec(a.trim().toUpperCase());
+  if (!m) return null;
+  let col = 0;
+  for (const ch of m[1]) col = col * 26 + (ch.charCodeAt(0) - 64);
+  const row = Number(m[2]);
+  return row >= 1 ? { row: row - 1, col: col - 1 } : null;
+}
+/** 0-based row and column → "D3". */
+export function addressOf(row: number, col: number): string {
+  let n = col + 1, s = "";
+  while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+  return `${s}${row + 1}`;
+}
+export const rangeText = (m: CellRange) => `${addressOf(m.top, m.left)}:${addressOf(m.bottom, m.right)}`;
+function parseRange(t: string): CellRange | null {
+  const [a, b] = t.split(":");
+  const p = parseAddress(a ?? ""), q = parseAddress(b ?? a ?? "");
+  if (!p || !q) return null;
+  return { top: Math.min(p.row, q.row), left: Math.min(p.col, q.col), bottom: Math.max(p.row, q.row), right: Math.max(p.col, q.col) };
 }
 
 export interface WorkbookData {
@@ -65,10 +96,12 @@ export interface WorkbookData {
  * ExcelJS leaves a formula result of exactly 0 (or false, or "") out of `cell.value` (it copies only truthy
  * fields), so a formula that calculates to 0 looked as if it had no saved result. `cell.result` keeps it.
  */
-function withResult(value: unknown, result: unknown): unknown {
+function withResult(value: unknown, result: unknown, formula?: string): unknown {
   if (!value || typeof value !== "object") return value;
-  const o = value as Record<string, unknown>;
-  if (!("formula" in o || "sharedFormula" in o) || o.result !== undefined || result === undefined || result === null) return value;
+  let o = value as Record<string, unknown>;
+  // A cell sharing another cell's formula names that cell ("D2"); ExcelJS's `formula` gives its own (Calc!B3).
+  if ("sharedFormula" in o && !("formula" in o) && formula) o = { ...o, formula };
+  if (!("formula" in o || "sharedFormula" in o) || o.result !== undefined || result === undefined || result === null) return o;
   return { ...o, result };
 }
 
@@ -83,17 +116,20 @@ export async function readWorkbook(bytes: ArrayBuffer | Uint8Array): Promise<Wor
     ws.eachRow({ includeEmpty: true }, (row, r) => {
       const cells: CellInfo[] = [];
       row.eachCell({ includeEmpty: true }, (cell, c) => {
-        cells[c - 1] = cellInfo(withResult(cell.value, (cell as unknown as { result?: unknown }).result));
+        const x = cell as unknown as { result?: unknown; formula?: string };
+        cells[c - 1] = cellInfo(withResult(cell.value, x.result, x.formula));
       });
       rows[r - 1] = cells;
       colCount = Math.max(colCount, cells.length);
     });
     const empty: CellInfo = { kind: "empty", value: null };
+    const merges = ((ws.model as { merges?: string[] }).merges ?? []).map(parseRange).filter((m): m is CellRange => m !== null);
     grids.set(ws.name, {
       name: ws.name,
       rowCount: rows.length,
       colCount,
       cell: (r, c) => rows[r]?.[c] ?? empty,
+      merges,
     });
   }
   return {
