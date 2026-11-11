@@ -278,7 +278,11 @@ tr.row-bad td.idx { color: var(--err); box-shadow: inset 3px 0 0 var(--err); }
 @media (max-width: 700px) {
   .page { padding: 16px; }
 }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+/* Less motion when Windows animations are off. Animations are made instant, not removed: an element that is
+   hidden until its animation ends (the drawing editor's dialogs: Help, Export image …) must still end shown. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; transition-delay: 0s !important; }
+}
 
 /* PFD side panel */
 .pfd-panel { width: var(--pfd-panel-w, 340px); flex: none; border-left: 1px solid var(--line); background: var(--surface); display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
