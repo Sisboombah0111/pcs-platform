@@ -17,7 +17,7 @@ describe("project file", () => {
   it("rejects other files and newer versions", () => {
     expect(() => parseProject("not json")).toThrow(ProjectFileError);
     expect(() => parseProject(JSON.stringify({ format: "excalidraw" }))).toThrow(/not a PCS project file/);
-    expect(() => parseProject(JSON.stringify({ format: "pcs-project", version: 4 }))).toThrow(/newer version/);
+    expect(() => parseProject(JSON.stringify({ format: "pcs-project", version: 5 }))).toThrow(/newer version/);
   });
 
   it("repairs missing lists and duplicate ids, and reports them", () => {

@@ -15,6 +15,8 @@ import { addRevision, changesByLine, compareBom, countSum, countText, deleteRevi
 import { CompareDialog, RevisionsDialog, SaveRevisionDialog, beforeAfter, changeMark, comparisonSheets, nowState, when } from "./BomRevisions";
 import { WhereUsedDialog, type GoPlace } from "./WhereUsed";
 import { ReplaceDialog, runReplace, type Transform } from "./ReplaceMaterial";
+import { sapBoms } from "../bom/sap";
+import { SemiFinishedSheet, exportSapBom } from "./SemiFinished";
 
 /** Per-viewer conveniences, remembered in this browser only. */
 const store = {
@@ -36,6 +38,8 @@ export function BomView(props: { project: Project; update: Update; confirm: Conf
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [project.uos, project.materials, project.bom, project.mb, project.pfd, project.streams]);
   const lineCount = bom.uos.reduce((n, u) => n + u.rows.length, 0);
+  // Semi-finished products and their SAP BOMs (N5.7): built from the lines, never changing them.
+  const sap = useMemo(() => sapBoms(project, bom), [project, bom]);
   const [backupsOf, setBackupsOf] = useState<Material | null>(null);
   const [usedOf, setUsedOf] = useState<string | null>(null);
   const [replacing, setReplacing] = useState<string | null>(null);
@@ -101,7 +105,7 @@ export function BomView(props: { project: Project; update: Update; confirm: Conf
   // The sheets at the bottom: everything, one per unit operation, the totals (remembered in this browser).
   const [sheetPick, setSheetPick] = useState<string>(() => store.get("sheet") ?? "all");
   const pickSheet = (id: string) => { setSheetPick(id); store.set("sheet", id); };
-  const sheet = sheetPick === "all" || sheetPick === "totals" || bom.uos.some((u) => `uo:${u.uo.id}` === sheetPick) ? sheetPick : "all";
+  const sheet = sheetPick === "all" || sheetPick === "totals" || (sheetPick === "sap" && (lineCount > 0 || !!project.bom.sap?.semi.length)) || bom.uos.some((u) => `uo:${u.uo.id}` === sheetPick) ? sheetPick : "all";
   const showUo = (id: string) => sheet === "all" || sheet === `uo:${id}`;
   const showTotals = sheet === "all" || sheet === "totals";
   const totalCount = bom.totals.length + bom.prepared.length + bom.backupTotals.length;
@@ -111,7 +115,7 @@ export function BomView(props: { project: Project; update: Update; confirm: Conf
       <div className="page-head">
         <div>
           <h1>BOM</h1>
-          <PageIntro id="bom" lead="Material quantities per unit operation, for each scenario.">Every line takes its quantity from one source: the applied mass balance (<b>MB</b>), counts linked on PFD shapes (<b>PFD</b>), or a number entered here (<b>Manual</b>, with a reason). Quantity = source value × (1 + overage). A material made in-house (a buffer with a recipe) is followed by its components (<b>Recipe</b>); alternate materials are listed as <b>Backup</b> and kept out of the totals. The sheets at the bottom show all of it, one unit operation, or the totals.</PageIntro>
+          <PageIntro id="bom" lead="Material quantities per unit operation, for each scenario.">Every line takes its quantity from one source: the applied mass balance (<b>MB</b>), counts linked on PFD shapes (<b>PFD</b>), or a number entered here (<b>Manual</b>, with a reason). Quantity = source value × (1 + overage). A material made in-house (a buffer with a recipe) is followed by its components (<b>Recipe</b>); alternate materials are listed as <b>Backup</b> and kept out of the totals. The sheets at the bottom show all of it, one unit operation, the totals, or the semi-finished products and their SAP BOMs.</PageIntro>
         </div>
       </div>
       <ScreenRibbon screen="bom">
@@ -163,6 +167,10 @@ export function BomView(props: { project: Project; update: Update; confirm: Conf
         )}
         <RibbonGroup label="Export">
           <RibbonButton big primary icon="excel" onClick={exportExcel} disabled={!lineCount} title="The BOM of every scenario as an Excel workbook" label="Export to Excel" />
+          <RibbonButton big icon="table" onClick={async () => {
+            if (!(project.bom.sap?.semi.length)) { pickSheet("sap"); return; }
+            try { const msg = await exportSapBom(project, sap, props.confirm); if (msg) props.toast(msg); } catch (e) { props.toast(`Could not export: ${(e as Error).message}`); }
+          }} disabled={!lineCount} title={project.bom.sap?.semi.length ? "SAP BOMs of the semi-finished products (header, items, materials, units, checks)" : "Set up the semi-finished products for SAP first (Semi-finished sheet)"} label="SAP BOM" />
         </RibbonGroup>
       </ScreenRibbon>
 
@@ -208,6 +216,11 @@ export function BomView(props: { project: Project; update: Update; confirm: Conf
             return { id: `uo:${u.uo.id}`, label: `${u.uo.code} (${u.rows.length})`, title: `${u.uo.code} · ${u.uo.name}${issues ? ` · ${issues} to check` : ""}`, ...(issues ? { dot: "warn" as const } : {}) };
           }),
           ...(totalCount ? [{ id: "totals", label: `Totals (${bom.totals.length})`, title: "What to buy, what is made in-house, backups" }] : []),
+          ...(lineCount || project.bom.sap?.semi.length ? [{
+            id: "sap", label: `Semi-finished (${project.bom.sap?.semi.length ?? 0})`,
+            title: `Semi-finished products and their SAP BOMs${sap.errors ? ` · ${sap.errors} errors` : ""}`,
+            ...(project.bom.sap?.semi.length && sap.errors ? { dot: "warn" as const } : {}),
+          }] : []),
         ]}
         active={sheet}
         onPick={pickSheet}
@@ -227,7 +240,8 @@ export function BomView(props: { project: Project; update: Update; confirm: Conf
             folded={sheet === "all" && folded.has(u.uo.id)} onFold={() => { const n = new Set(folded); if (n.has(u.uo.id)) n.delete(u.uo.id); else n.add(u.uo.id); fold(n); }}
             bom={bom} project={project} update={update} confirm={props.confirm} onBackups={setBackupsOf} onWhereUsed={(m) => setUsedOf(m.id)} onReplace={props.transform ? (m) => setReplacing(m.id) : undefined} />;
         })}
-        {filtered && shownCount === 0 && sheet !== "totals" && <div className="notice xl-empty">No line matches. <button className="linkish" onClick={() => setFilter(NO_FILTER)}>Clear the filters</button></div>}
+        {sheet === "sap" && <SemiFinishedSheet project={project} bom={bom} sap={sap} update={update} confirm={props.confirm} toast={props.toast} />}
+        {filtered && shownCount === 0 && sheet !== "totals" && sheet !== "sap" && <div className="notice xl-empty">No line matches. <button className="linkish" onClick={() => setFilter(NO_FILTER)}>Clear the filters</button></div>}
 
         {showTotals && bom.totals.length > 0 && (
           <TotalsTable label="Totals" title="Totals per material" scen={bom.scenarios} list={bom.totals}

@@ -22,9 +22,16 @@ import {
   type Material,
   type Project,
   type QtySource,
+  type SapDateFormat,
+  type SapSetup,
   type Scenario,
+  type SemiFinished,
+  type SemiKind,
   type UnitOperation,
 } from "./types";
+
+/** True when the project has a SAP set-up worth saving (then the file is written as v4). */
+export const hasSap = (p: Pick<Project, "bom">) => !!p.bom.sap && (p.bom.sap.semi.length > 0 || Object.keys(p.bom.sap).length > 1);
 
 export const DEFAULT_SCENARIOS: Scenario[] = [
   { id: "sending", name: "Sending", column: "Sending" },
@@ -60,11 +67,12 @@ export function createProject(name = "New process", now = new Date().toISOString
 }
 
 /**
- * The project as a file. A project with equipment or steps is written as v3, so an older app says
- * "saved by a newer version" instead of dropping them; one without is still v2 and opens anywhere.
+ * The project as a file. A project with SAP semi-finished products is written as v4, one with equipment
+ * or steps as v3, so an older app says "saved by a newer version" instead of dropping them; one without
+ * either is still v2 and opens anywhere.
  */
 export function serializeProject(p: Project): string {
-  return JSON.stringify({ ...p, version: hasOperations(p) ? PROJECT_VERSION : 2 });
+  return JSON.stringify({ ...p, version: hasSap(p) ? PROJECT_VERSION : hasOperations(p) ? 3 : 2 });
 }
 
 export interface ParseResult {
@@ -202,6 +210,8 @@ export function parseProject(text: string): ParseResult {
   }
   const revisions = readRevisions(arr(bom.revisions));
   if (revisions.length) p.bom.revisions = revisions;
+  const sap = readSap(bom.sap, new Set(p.uos.map((u) => u.id)), new Set(p.materials.map((m) => m.id)));
+  if (sap) p.bom.sap = sap;
 
   const { symbols, dropped } = cleanSymbols(arr(raw.symbols));
   p.symbols = symbols;
@@ -222,6 +232,41 @@ export function parseProject(text: string): ParseResult {
   const issues = validateProject(p);
   if (issues.length) notes.push(...issues.map((i) => i.message));
   return { project: p, notes };
+}
+
+/** The SAP set-up as stored (N5.7): well-formed semi-finished products, known materials, numbers as numbers. */
+function readSap(raw: unknown, uoIds: ReadonlySet<string>, matIds: ReadonlySet<string>): SapSetup | undefined {
+  if (!isObj(raw)) return undefined;
+  const ids = new Set<string>();
+  const semi = arr(raw.semi).filter(isObj).filter((x) => typeof x.uoId === "string" && (x.kind === "uo" || x.kind === "packing" || x.kind === "unpacking")).map((x): SemiFinished => {
+    let id = str(x.id);
+    if (!id || ids.has(id)) id = newId("sf");
+    ids.add(id);
+    const out: SemiFinished = { id, kind: x.kind as SemiKind, uoId: x.uoId as string, code: str(x.code).trim(), name: str(x.name) };
+    if (typeof x.stream === "string" && x.stream) out.stream = x.stream;
+    if (typeof x.baseQty === "number" && Number.isFinite(x.baseQty) && x.baseQty > 0) out.baseQty = x.baseQty;
+    if (typeof x.baseUnit === "string" && x.baseUnit.trim()) out.baseUnit = x.baseUnit.trim();
+    const mats = arr(x.materials).filter((m): m is string => typeof m === "string" && matIds.has(m));
+    if (mats.length && out.kind !== "uo") out.materials = [...new Set(mats)];
+    return out;
+  });
+  // A semi-finished product of a unit operation that is gone is kept (the SAP sheet says to remove it), unless the file has no unit operations at all.
+  const out: SapSetup = { semi: uoIds.size ? semi : [] };
+  for (const k of ["plant", "usage", "alternative", "status", "scenarioId"] as const) if (typeof raw[k] === "string" && (raw[k] as string).trim()) out[k] = (raw[k] as string).trim();
+  if (typeof raw.validFrom === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.validFrom)) out.validFrom = raw.validFrom;
+  if (typeof raw.dateFormat === "string" && (["YYYY.MM.DD", "YYYYMMDD", "YYYY-MM-DD", "DD.MM.YYYY", "MM/DD/YYYY"] as string[]).includes(raw.dateFormat)) out.dateFormat = raw.dateFormat as SapDateFormat;
+  if (typeof raw.codeDigits === "number" && Number.isInteger(raw.codeDigits) && raw.codeDigits >= 0 && raw.codeDigits <= 18) out.codeDigits = raw.codeDigits;
+  if (raw.chain === false) out.chain = false;
+  if (isObj(raw.units)) {
+    const units = Object.fromEntries(Object.entries(raw.units).filter(([k, v]) => k.trim() && typeof v === "string" && v.trim()).map(([k, v]) => [k.trim().toLowerCase(), (v as string).trim()]));
+    if (Object.keys(units).length) out.units = units;
+  }
+  if (isObj(raw.bomUnits)) {
+    const bu = Object.fromEntries(Object.entries(raw.bomUnits).filter(([k, v]) => matIds.has(k) && isObj(v) && typeof v.unit === "string" && v.unit.trim() && typeof v.factor === "number" && Number.isFinite(v.factor) && v.factor > 0)
+      .map(([k, v]) => [k, { unit: ((v as Record<string, unknown>).unit as string).trim(), factor: (v as Record<string, unknown>).factor as number }]));
+    if (Object.keys(bu).length) out.bomUnits = bu;
+  }
+  return out.semi.length || Object.keys(out).length > 1 ? out : undefined;
 }
 
 /** Saved BOM revisions as stored in a file: keep the well-formed ones, values as numbers or null. */

@@ -6,6 +6,7 @@
  */
 import { pcsOf, type BoardElement, type PcsData } from "../pfd/sync";
 import { deleteMaterial, recipeLoops, withBackups, withRecipe } from "./recipes";
+import { replaceInSap } from "../bom/sap";
 import type { BackupMaterial, Material, PfdSheet, Project } from "./types";
 
 export type AfterReplace = "obsolete" | "delete" | "keep";
@@ -140,5 +141,7 @@ export function replaceMaterial(p: Project, fromId: string, toId: string, opts: 
   if (opts.after === "obsolete") materials = materials.map((m) => (m.id === fromId ? { ...m, status: "obsolete" as const, replacedBy: toId } : m));
   if (opts.after === "delete") materials = deleteMaterial(materials, fromId);
   if (opts.after === "delete") materials = materials.map((m) => (m.replacedBy === fromId ? { ...m, replacedBy: toId } : m));
-  return { ...p, materials, pfd, bom: { ...p.bom, lines: Object.fromEntries(Object.entries(lines).filter(([, l]) => l.length)) } };
+  const bom: Project["bom"] = { ...p.bom, lines: Object.fromEntries(Object.entries(lines).filter(([, l]) => l.length)) };
+  if (p.bom.sap) bom.sap = replaceInSap(p.bom.sap, fromId, toId);
+  return { ...p, materials, pfd, bom };
 }

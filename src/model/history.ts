@@ -8,6 +8,7 @@
 import type { ChangeEntry, Equipment, Material, OpStep, Project } from "./types";
 import { newId } from "./ids";
 import { changeText, detailChanges, detailsOf } from "./materialDiff";
+import { describeSap } from "../bom/sap";
 
 /** Changed materials logged detail by detail (before → after); more in one line by code. */
 const DETAILED = 10;
@@ -128,6 +129,7 @@ export function describeChange(before: Parts, after: Parts, uoCode: (id: string)
     const addedRev = rb.filter((r) => !ra.some((x) => x.id === r.id)), removedRev = ra.filter((r) => !rb.some((x) => x.id === r.id));
     if (addedRev.length) out.push(`BOM revision saved: ${addedRev.map((r) => r.label).join(", ")}`);
     if (removedRev.length) out.push(`BOM revision deleted: ${removedRev.map((r) => r.label).join(", ")}`);
+    out.push(...describeSap(before.bom.sap, after.bom.sap, uoCode));
   }
   if (before.equipment && after.equipment) {
     const d = byId<Equipment>(before.equipment, after.equipment);

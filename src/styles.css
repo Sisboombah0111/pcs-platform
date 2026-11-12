@@ -882,3 +882,28 @@ td.op-dd-cell { position: relative; padding: 0 !important; }
   background: var(--surface); border: 1px solid var(--control); box-shadow: 0 6.4px 14.4px rgb(0 0 0 / .13), 0 1.2px 3.6px rgb(0 0 0 / .11); padding: 8px; }
 .cell-pop.up { top: auto; bottom: 100%; }
 .cell-pop .op-chips { flex-direction: column; align-items: flex-start; }
+
+/* Semi-finished products and SAP BOMs (N5.7) */
+.sf-settings { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 14px; align-items: end; }
+.sf-settings input, .sf-settings select { width: 100%; min-width: 0; color: var(--ink); }
+.sf-settings .bad-soft { border-color: var(--warn); }
+.sf-chain { grid-column: 1 / -1; }
+.sf-add { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.sf-intro { display: grid; gap: 8px; }
+.sf-intro p { margin: 0; max-width: 90ch; }
+.sf-table td { vertical-align: middle; }
+.sf-table input.cell-input { min-width: 90px; }
+.sf-table tr.sf-band td { background: var(--sunken); color: var(--muted); font-size: var(--fs-xs); font-weight: 600; }
+.sf-base { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.sf-base select.cell-input { min-width: 200px; width: auto; }
+.sf-base-typed { display: inline-flex; gap: 4px; align-items: center; }
+.sf-base-typed .num-input { width: 96px; }
+.sf-base-typed .sf-unit { width: 56px; min-width: 0; }
+.sf-items select.cell-input { min-width: 160px; }
+.sf-issues { gap: 6px; }
+.sf-issue { align-items: baseline; flex-wrap: wrap; }
+.sf-issue > span:nth-child(2) { flex: 1 1 360px; }
+.sf-issue.sub { padding-left: 64px; font-size: var(--fs-sm); color: var(--muted); }
+.xl-auto .sf-settings, .xl-auto .sf-intro, .xl-auto .panel-pad:has(> .sf-issues) { padding: 10px 14px; }
+.xl-auto .notice.ok { margin: 12px; }
+.sf-table td:first-child { white-space: nowrap; }

@@ -4,8 +4,11 @@
  */
 
 export const PROJECT_FORMAT = "pcs-project";
-/** v3 adds equipment and operations (steps and actions); a file without them is still written as v2. */
-export const PROJECT_VERSION = 3;
+/**
+ * v3 adds equipment and operations (steps and actions); v4 the SAP semi-finished products (N5.7). A file is
+ * written with the lowest version that keeps what it has (without either it is still v2).
+ */
+export const PROJECT_VERSION = 4;
 
 export interface Material {
   id: string;
@@ -200,6 +203,54 @@ export interface Bom {
   lines: Record<string, BomLine[]>;
   /** Saved revisions (Rev A, Rev B …): what the BOM said at that moment, to compare with later. */
   revisions?: BomRevision[];
+  /** Semi-finished products and the SAP BOM export (N5.7). Never changes the BOM lines or quantities. */
+  sap?: SapSetup;
+}
+
+export type SemiKind = "uo" | "packing" | "unpacking";
+export type SapDateFormat = "YYYY.MM.DD" | "YYYYMMDD" | "YYYY-MM-DD" | "DD.MM.YYYY" | "MM/DD/YYYY";
+
+/** A semi-finished product (SAP HALB) of a unit operation: its run, or its column packing / unpacking. */
+export interface SemiFinished {
+  id: string;
+  kind: SemiKind;
+  uoId: string;
+  /** SAP material number (entered here). */
+  code: string;
+  name: string;
+  /** kind "uo": the stream whose MB flow is the base quantity (one batch's output); not set = the first transfer out. */
+  stream?: string;
+  /** A base quantity typed in (wins over the stream), and its unit. */
+  baseQty?: number;
+  baseUnit?: string;
+  /** packing / unpacking: the BOM lines of its unit operation it takes (material ids). The others stay on the unit operation's. */
+  materials?: string[];
+}
+
+/** Settings of the SAP BOM sheets (CS01 / upload) and the semi-finished products. */
+export interface SapSetup {
+  semi: SemiFinished[];
+  /** WERKS */
+  plant?: string;
+  /** STLAN (default 1, production) */
+  usage?: string;
+  /** STLAL (default 1) */
+  alternative?: string;
+  /** STLST (default 1, active) */
+  status?: string;
+  /** DATUV, YYYY-MM-DD (not set = the day of the export). */
+  validFrom?: string;
+  dateFormat?: SapDateFormat;
+  /** The scenario whose quantities go to SAP (not set = Receiving). */
+  scenarioId?: string;
+  /** Codes are numbers of this many digits (not set = 7; 0 = any code). */
+  codeDigits?: number;
+  /** App unit (lower case) → SAP unit, on top of L, mL, kg, g, mg, EA. */
+  units?: Record<string, string>;
+  /** Material id → the unit it is counted in in the SAP BOMs: 1 of its own unit = factor of this one (kg → g × 1000). */
+  bomUnits?: Record<string, { unit: string; factor: number }>;
+  /** A unit operation's semi-finished product takes the one before it (the transfer in). Not set = yes. */
+  chain?: boolean;
 }
 
 /** A quantity per scenario id (null = no value). */
