@@ -63,7 +63,7 @@ await sheet(/^Material list/);
 // ---- BOM -----------------------------------------------------------------------------------------------------------
 await screen(/^BOM/);
 const bomSheets = await sheets();
-check("BOM sheets: All, one per unit operation, Totals", bomSheets[0] === "All (42)" && bomSheets.includes("PROA (11)") && bomSheets.includes("STOR (2)") && /^Totals/.test(bomSheets.at(-1)), JSON.stringify(bomSheets));
+check("BOM sheets: All, one per unit operation, Totals, Semi-finished (N5.7)", bomSheets[0] === "All (42)" && bomSheets.includes("PROA (11)") && bomSheets.includes("STOR (2)") && /^Totals/.test(bomSheets.at(-2)) && bomSheets.at(-1) === "Semi-finished (0)", JSON.stringify(bomSheets));
 check("All: every unit operation and the totals", (await page.locator("section[aria-label^='BOM ']").count()) === 7 && await page.locator("section[aria-label='Totals']").isVisible());
 await sheet(/^CEX/);
 check("CEX sheet: only CEX", (await page.locator("section[aria-label^='BOM ']").count()) === 1 && await page.locator("section[aria-label='BOM CEX']").isVisible() && !(await page.locator("section[aria-label='Totals']").count()));
