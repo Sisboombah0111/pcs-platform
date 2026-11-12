@@ -563,8 +563,9 @@ function BomLineRow(props: { r: BomRow; uo: string; scen: Scenario[]; batched: b
 /** "1 EA per batch of 200 L × 10 batches", "1,000 L per 1,000 L, for whole batches" … */
 function partText(part: BomPart): string {
   const t = componentText(part.recipeQty, part.material, part.per, part.parent, part.basis, part.batch);
-  if (part.basis === "batch") return t;
-  return recipeOf(part.parent)?.wholeBatches && part.batch ? `${t}, for whole batches` : t;
+  const share = part.poolLines ? `; this line's share of one preparation for ${part.poolLines} lines` : "";
+  if (part.basis === "batch") return t + share;
+  return (recipeOf(part.parent)?.wholeBatches && part.batch ? `${t}, for whole batches` : t) + share;
 }
 
 /** "Batches of 200 L: Sending 10 · Receiving 73" under a prepared material counted in batches. */

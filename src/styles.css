@@ -256,7 +256,9 @@ tr.row-bad td.idx { color: var(--err); box-shadow: inset 3px 0 0 var(--err); }
 }
 .dialog.wide { width: min(960px, 100%); }
 .dialog h2 { margin: 0; padding: 16px 18px 8px; font-size: var(--fs-xl); }
-.dialog .body { padding: 4px 18px 12px; overflow: auto; display: grid; gap: 10px; align-content: start; }
+/* Rows as tall as their content (a table capped by its own max-height stays capped): when it does not fit, the body
+   scrolls, instead of squashing a table inside it to a few pixels (the recipe dialog on a laptop, N5.7). */
+.dialog .body { padding: 4px 18px 12px; overflow: auto; display: grid; gap: 10px; align-content: start; grid-auto-rows: max-content; }
 .dialog .foot { padding: 12px 18px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 8px; }
 .dialog p { margin: 0; }
 
@@ -907,3 +909,9 @@ td.op-dd-cell { position: relative; padding: 0 !important; }
 .xl-auto .sf-settings, .xl-auto .sf-intro, .xl-auto .panel-pad:has(> .sf-issues) { padding: 10px 14px; }
 .xl-auto .notice.ok { margin: 12px; }
 .sf-table td:first-child { white-space: nowrap; }
+.sf-move { display: inline-flex; gap: 8px; align-items: center; }
+.sf-split { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px 10px; margin: 0; display: grid; gap: 8px; }
+.sf-split legend { padding: 0 4px; font-size: var(--fs); }
+.sf-split-modes { display: flex; gap: 16px; flex-wrap: wrap; }
+.sf-split-streams { display: grid; gap: 4px; padding-left: 8px; }
+.sf-paste { width: 100%; font-family: var(--mono); font-size: var(--fs-sm); border: 1px solid var(--line-strong); border-radius: var(--r); padding: 8px; resize: vertical; }

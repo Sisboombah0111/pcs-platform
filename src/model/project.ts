@@ -22,6 +22,7 @@ import {
   type Material,
   type Project,
   type QtySource,
+  type LinePart,
   type SapDateFormat,
   type SapSetup,
   type Scenario,
@@ -30,8 +31,10 @@ import {
   type UnitOperation,
 } from "./types";
 
-/** True when the project has a SAP set-up worth saving (then the file is written as v4). */
+/** True when the project has a SAP set-up worth saving. */
 export const hasSap = (p: Pick<Project, "bom">) => !!p.bom.sap && (p.bom.sap.semi.length > 0 || Object.keys(p.bom.sap).length > 1);
+/** What a v4 file holds (N5.7): a SAP set-up, or a recipe prepared once for all its lines. An older app would drop them. */
+export const hasV4 = (p: Pick<Project, "bom" | "materials">) => hasSap(p) || p.materials.some((m) => m.recipe?.shared);
 
 export const DEFAULT_SCENARIOS: Scenario[] = [
   { id: "sending", name: "Sending", column: "Sending" },
@@ -67,12 +70,12 @@ export function createProject(name = "New process", now = new Date().toISOString
 }
 
 /**
- * The project as a file. A project with SAP semi-finished products is written as v4, one with equipment
+ * The project as a file. A project with SAP semi-finished products or a shared preparation is written as v4, one with equipment
  * or steps as v3, so an older app says "saved by a newer version" instead of dropping them; one without
  * either is still v2 and opens anywhere.
  */
 export function serializeProject(p: Project): string {
-  return JSON.stringify({ ...p, version: hasSap(p) ? PROJECT_VERSION : hasOperations(p) ? 3 : 2 });
+  return JSON.stringify({ ...p, version: hasV4(p) ? PROJECT_VERSION : hasOperations(p) ? 3 : 2 });
 }
 
 export interface ParseResult {
@@ -248,6 +251,21 @@ function readSap(raw: unknown, uoIds: ReadonlySet<string>, matIds: ReadonlySet<s
     if (typeof x.baseUnit === "string" && x.baseUnit.trim()) out.baseUnit = x.baseUnit.trim();
     const mats = arr(x.materials).filter((m): m is string => typeof m === "string" && matIds.has(m));
     if (mats.length && out.kind !== "uo") out.materials = [...new Set(mats)];
+    if (isObj(x.split) && out.kind !== "uo") {
+      const split: Record<string, LinePart> = {};
+      for (const [mid, v] of Object.entries(x.split)) {
+        if (!matIds.has(mid) || !isObj(v)) continue;
+        const part: LinePart = {};
+        const streams = arr(v.streams).filter((t): t is string => typeof t === "string" && !!t);
+        if (streams.length) part.streams = [...new Set(streams)];
+        else if (isObj(v.qty)) {
+          const qty = Object.fromEntries(Object.entries(v.qty).filter(([, q]) => typeof q === "number" && Number.isFinite(q) && q >= 0)) as Record<string, number>;
+          if (Object.keys(qty).length) part.qty = qty;
+        }
+        if (part.streams || part.qty) split[mid] = part;
+      }
+      if (Object.keys(split).length) out.split = split;
+    }
     return out;
   });
   // A semi-finished product of a unit operation that is gone is kept (the SAP sheet says to remove it), unless the file has no unit operations at all.

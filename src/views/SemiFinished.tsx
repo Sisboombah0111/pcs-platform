@@ -6,11 +6,12 @@
  */
 import { useState } from "react";
 import type { BomResult } from "../bom/model";
-import { DATE_FORMATS, SEMI_KIND_LABEL, SMALLER_UNIT, addForEveryUo, addSemi, assignLine, checksOf as bomChecks, codeDigits, codeProblem, removeSemi, sapDate, sapScenario, setBomUnit, setSapSettings, setSemi, type SapBom, type SapIssue, type SapResult } from "../bom/sap";
+import { DATE_FORMATS, SEMI_KIND_LABEL, SMALLER_UNIT, addForEveryUo, addSemi, applySemiPaste, assignLine, checksOf as bomChecks, codeDigits, codeProblem, partQty, pasteDown, pasteTable, planSemiPaste, removeSemi, sapDate, sapScenario, setBomUnit, setLineSplit, setSapSettings, setSemi, type LineShare, type SapBom, type SapIssue, type SapResult } from "../bom/sap";
+import { Dialog } from "../ui/Dialog";
 import { sapWorkbook } from "../bom/sapExcel";
 import { fmtQty } from "../mb/model";
 import { newId } from "../model/ids";
-import type { Project, SapDateFormat, SemiFinished, SemiKind } from "../model/types";
+import type { LinePart, Project, SapDateFormat, SemiFinished, SemiKind } from "../model/types";
 import { streamFlow, uoStreams } from "../ops/model";
 import { downloadBlob } from "../storage/files";
 
@@ -47,6 +48,15 @@ export function SemiFinishedSheet(props: { project: Project; bom: BomResult; sap
   const selected = sap.boms.find((b) => b.key === pick) ?? sap.boms[0] ?? null;
   const [addKind, setAddKind] = useState<SemiKind>("packing");
   const [addUo, setAddUo] = useState<string>("");
+  const [pasting, setPasting] = useState(false);
+  /** Codes pasted into a code cell: down the list from that row (a second column = names). */
+  const pasteCodes = (startId: string, text: string) => {
+    const table = pasteTable(text);
+    const order = own.map((b) => b.key);
+    const n = Math.min(table.length, order.length - order.indexOf(startId));
+    update((p) => pasteDown(p, order, startId, table).project);
+    props.toast(`Pasted ${n} code${n === 1 ? "" : "s"}${table.length > n ? ` (${table.length - n} more rows than semi-finished products below: use Paste a list… to add them)` : ""}`);
+  };
   const uos = [...project.uos].sort((a, b) => a.order - b.order);
   const checksOf = (key: string) => bomChecks(sap, key);
   const own = sap.boms.filter((b) => b.kind !== "prep");
@@ -97,6 +107,7 @@ export function SemiFinishedSheet(props: { project: Project; bom: BomResult; sap
             </select>
             <button className="btn small" onClick={addOne} disabled={!uos.length}>Add</button>
           </span>
+          <button className="btn small" onClick={() => setPasting(true)} disabled={!uos.length} title="Paste unit operation, kind, SAP code and name from Excel: updates the semi-finished products and adds the missing ones">Paste a list…</button>
           <button className="btn small primary" onClick={doExport} disabled={!sap.boms.length} title="Header, items, materials, units and checks, with SAP field names">SAP BOM Excel…</button>
         </div>
         {!semis.length && (
@@ -115,7 +126,7 @@ export function SemiFinishedSheet(props: { project: Project; bom: BomResult; sap
                 </tr>
               </thead>
               <tbody>
-                {own.map((b) => <SemiRow key={b.key} b={b} project={project} sap={sap} selected={selected?.key === b.key} checks={checksOf(b.key)} update={update} onPick={() => setPick(b.key)} onRemove={() => remove(b.semi!)} />)}
+                {own.map((b) => <SemiRow key={b.key} b={b} project={project} sap={sap} selected={selected?.key === b.key} checks={checksOf(b.key)} update={update} onPick={() => setPick(b.key)} onRemove={() => remove(b.semi!)} onPaste={(text) => pasteCodes(b.key, text)} />)}
                 {prep.length > 0 && own.length > 0 && <tr className="sf-band"><td colSpan={8}>Prepared in-house: the recipe is the BOM (code = MatCode, Materials screen)</td></tr>}
                 {prep.map((b) => {
                   const n = checksOf(b.key);
@@ -141,6 +152,12 @@ export function SemiFinishedSheet(props: { project: Project; bom: BomResult; sap
       {selected && <ItemsPanel key={selected.key} b={selected} project={project} bom={bom} sap={sap} update={update} />}
 
       <ChecksPanel sap={sap} update={update} onShow={(key) => setPick(key)} />
+      {pasting && <PasteDialog project={project} onClose={() => setPasting(false)} onApply={(plan) => {
+        const r = applySemiPaste(project, plan);
+        update((p) => applySemiPaste(p, plan).project);
+        setPasting(false);
+        props.toast(`Semi-finished products: ${r.updated} updated, ${r.created} added`);
+      }} />}
     </>
   );
 }
@@ -151,7 +168,7 @@ function CheckChips({ list }: { list: SapIssue[] }) {
   return <>{e > 0 && <span className="chip err">{e} error{e === 1 ? "" : "s"}</span>} {w > 0 && <span className="chip warn">{w}</span>}</>;
 }
 
-function SemiRow(props: { b: SapBom; project: Project; sap: SapResult; selected: boolean; checks: SapIssue[]; update: Update; onPick: () => void; onRemove: () => void }) {
+function SemiRow(props: { b: SapBom; project: Project; sap: SapResult; selected: boolean; checks: SapIssue[]; update: Update; onPick: () => void; onRemove: () => void; onPaste: (text: string) => void }) {
   const { b, project, sap, update } = props;
   const s = b.semi!;
   const set = (patch: Partial<Omit<SemiFinished, "id">>) => update((p) => setSemi(p, s.id, patch));
@@ -165,7 +182,8 @@ function SemiRow(props: { b: SapBom; project: Project; sap: SapResult; selected:
     <tr className={props.selected ? "row-current" : props.checks.some((i) => i.level === "error") ? "row-attn" : ""}>
       <td>{SEMI_KIND_LABEL[s.kind]}</td>
       <td className="mono">{b.uo?.code ?? <span className="warn-text">deleted</span>}</td>
-      <td><input className={`cell-input mono${bad ? " bad" : ""}`} value={s.code} placeholder={codeDigits(sap.setup) ? `${codeDigits(sap.setup)} digits` : "code"} onChange={(e) => set({ code: e.target.value.trim() })} aria-label={`SAP code of ${s.name}`} title={bad ? `The code is ${bad}` : "SAP material number of the semi-finished product"} /></td>
+      <td><input className={`cell-input mono${bad ? " bad" : ""}`} value={s.code} placeholder={codeDigits(sap.setup) ? `${codeDigits(sap.setup)} digits` : "code"} onChange={(e) => set({ code: e.target.value.trim() })} aria-label={`SAP code of ${s.name}`} title={bad ? `The code is ${bad}` : "SAP material number of the semi-finished product. Paste a column of codes from Excel here to fill the rows below too."}
+        onPaste={(e) => { const t = e.clipboardData.getData("text"); if (/[\n\t]/.test(t.trim())) { e.preventDefault(); props.onPaste(t); } }} /></td>
       <td><input className="cell-input" value={s.name} maxLength={80} onChange={(e) => set({ name: e.target.value })} aria-label={`Name of ${s.code || s.name}`} /></td>
       <td>
         {s.kind === "uo" ? (
@@ -206,8 +224,9 @@ function ItemsPanel(props: { b: SapBom; project: Project; bom: BomResult; sap: S
   const others = siblings.filter((s) => s.kind !== "uo");
   const canMove = b.kind !== "prep" && others.length > 0;
   const rows = b.uo ? bom.uos.find((u) => u.uo.id === b.uo!.id)?.rows ?? [] : [];
-  const notHere = b.semi && b.kind !== "uo" ? rows.filter((r) => !r.line.excluded && !(b.semi!.materials ?? []).includes(r.material.id)) : [];
+  const notHere = b.semi && b.kind !== "uo" ? rows.filter((r) => !r.line.excluded && !(b.semi!.materials ?? []).includes(r.material.id) && !b.semi!.split?.[r.material.id]) : [];
   const [add, setAdd] = useState("");
+  const [splitOf, setSplitOf] = useState<string | null>(null);
   const bomUnits = project.bom.sap?.bomUnits ?? {};
   const label = (s: SemiFinished) => `${s.code || "(no code)"} · ${SEMI_KIND_LABEL[s.kind]}`;
   return (
@@ -257,11 +276,16 @@ function ItemsPanel(props: { b: SapBom; project: Project; bom: BomResult; sap: S
                     <td className="hint">{it.source}</td>
                     {canMove && (
                       <td>{m && !it.semiId ? (
-                        <select className="cell-input" value={b.kind === "uo" ? runSemi?.id ?? "" : b.semi!.id} aria-label={`Semi-finished product of ${it.code}`}
-                          onChange={(e) => update((p) => assignLine(p, b.uo!.id, m.id, e.target.value && e.target.value !== runSemi?.id ? e.target.value : null))}>
-                          <option value={runSemi?.id ?? ""}>{runSemi ? label(runSemi) : `${b.uo!.code} run`}</option>
-                          {others.map((s) => <option key={s.id} value={s.id}>{label(s)}</option>)}
-                        </select>
+                        <span className="sf-move">
+                          {it.partial ? <span className="chip">{it.partial === "part" ? "Part of the line" : "Rest of the line"}</span> : (
+                            <select className="cell-input" value={b.kind === "uo" ? runSemi?.id ?? "" : b.semi!.id} aria-label={`Semi-finished product of ${it.code}`}
+                              onChange={(e) => update((p) => assignLine(p, b.uo!.id, m.id, e.target.value && e.target.value !== runSemi?.id ? e.target.value : null))}>
+                              <option value={runSemi?.id ?? ""}>{runSemi ? label(runSemi) : `${b.uo!.code} run`}</option>
+                              {others.map((s) => <option key={s.id} value={s.id}>{label(s)}</option>)}
+                            </select>
+                          )}
+                          <button className="linkish" onClick={() => setSplitOf(m.id)} aria-label={`Split ${it.code}…`} title="Give a part of this line (MB streams or an amount) to the packing or unpacking">Split…</button>
+                        </span>
                       ) : null}</td>
                     )}
                     <td>{m && (conv || (smaller && rounded)) ? (
@@ -278,6 +302,7 @@ function ItemsPanel(props: { b: SapBom; project: Project; bom: BomResult; sap: S
           </table>
         </div>
       )}
+      {splitOf && b.uo && <SplitDialog project={project} bom={bom} sap={sap} uoId={b.uo.id} materialId={splitOf} update={update} onClose={() => setSplitOf(null)} />}
     </section>
   );
 }
@@ -403,5 +428,154 @@ function SettingsPanel({ project, sap, update }: { project: Project; sap: SapRes
         </label>
       </div>}
     </section>
+  );
+}
+
+type Mode = "none" | "all" | "streams" | "qty";
+interface ShareForm { mode: Mode; streams: string[]; qty: string }
+
+/**
+ * Split one BOM line between the unit operation's semi-finished product and its packing / unpacking ones: each of
+ * those takes nothing, the whole line, the MB amounts of some streams, or an amount; the rest stays on the run.
+ */
+function SplitDialog(props: { project: Project; bom: BomResult; sap: SapResult; uoId: string; materialId: string; update: Update; onClose: () => void }) {
+  const { project, bom, sap, uoId, materialId } = props;
+  const semis = project.bom.sap?.semi ?? [];
+  const others = semis.filter((s) => s.uoId === uoId && s.kind !== "uo");
+  const run = semis.find((s) => s.uoId === uoId && s.kind === "uo");
+  const uo = project.uos.find((u) => u.id === uoId);
+  const row = bom.uos.find((u) => u.uo.id === uoId)?.rows.find((r) => r.material.id === materialId);
+  const sid = sap.scenario?.id ?? "";
+  const [form, setForm] = useState<Record<string, ShareForm>>(() => Object.fromEntries(others.map((s) => {
+    const part = s.split?.[materialId];
+    const f: ShareForm = (s.materials ?? []).includes(materialId) ? { mode: "all", streams: [], qty: "" }
+      : part?.streams?.length ? { mode: "streams", streams: part.streams, qty: "" }
+      : part?.qty ? { mode: "qty", streams: [], qty: part.qty[sid] != null ? String(part.qty[sid]) : "" }
+      : { mode: "none", streams: [], qty: "" };
+    return [s.id, f];
+  })));
+  if (!row || !uo) return null;
+  const m = row.material;
+  const base = row.base[sid];
+  const streams = row.line.qtySource === "MB" && row.mbByStream ? Object.entries(row.mbByStream).map(([id, v]) => ({ id, v: v[sid] ?? null })).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })) : [];
+  const set = (id: string, patch: Partial<ShareForm>) => setForm({ ...form, [id]: { ...form[id], ...patch } });
+  const errors: string[] = [];
+  let rest: number | null = base ?? null;
+  const taken = new Map<string, string>();
+  for (const s of others) {
+    const f = form[s.id];
+    const who = s.code || s.name;
+    if (f.mode === "all") { if (rest != null && base != null) rest = Number((rest - base).toPrecision(12)); }
+    if (f.mode === "streams") {
+      if (!f.streams.length) errors.push(`${who}: tick at least one stream.`);
+      for (const st of f.streams) { if (taken.has(st)) errors.push(`${st} is given to ${taken.get(st)} and ${who}.`); taken.set(st, who); }
+      const q = partQty(row, { streams: f.streams }, sid).qty;
+      if (rest != null && q != null) rest = Number((rest - q).toPrecision(12));
+    }
+    if (f.mode === "qty") {
+      const n = Number(f.qty.replace(/,/g, ""));
+      if (!f.qty.trim() || !Number.isFinite(n) || n < 0) errors.push(`${who}: type an amount (a number ≥ 0).`);
+      else if (rest != null) rest = Number((rest - n).toPrecision(12));
+    }
+  }
+  if (others.filter((s) => form[s.id].mode === "all").length > 1) errors.push("Only one semi-finished product can take the whole line.");
+  if (rest != null && rest < 0) errors.push(`The parts (${fmtQty((base ?? 0) - rest)} ${m.unit}) are more than the line (${fmtQty(base)} ${m.unit}).`);
+  const save = () => {
+    const shares: Record<string, LineShare> = {};
+    for (const s of others) {
+      const f = form[s.id];
+      if (f.mode === "all") shares[s.id] = { kind: "all" };
+      else if (f.mode === "streams") shares[s.id] = { kind: "part", part: { streams: f.streams } };
+      else if (f.mode === "qty") {
+        const qty: Record<string, number> = { ...(s.split?.[materialId]?.qty ?? {}), [sid]: Number(f.qty.replace(/,/g, "")) };
+        shares[s.id] = { kind: "part", part: { qty } as LinePart };
+      } else shares[s.id] = { kind: "none" };
+    }
+    props.update((p) => setLineSplit(p, uoId, materialId, shares));
+    props.onClose();
+  };
+  return (
+    <Dialog title={`Split ${m.code} · ${uo.code}`} wide onClose={props.onClose} actions={<>
+      <span className="spacer" />
+      <button className="btn" onClick={props.onClose}>Cancel</button>
+      <button className="btn primary" disabled={!!errors.length || !others.length} onClick={save}>Save</button>
+    </>}>
+      <p>
+        <b>{m.code} {m.name}</b>: {base == null ? "no quantity" : `${fmtQty(base)} ${m.unit}`} in {sap.scenario?.name ?? "this scenario"} ({row.line.qtySource === "manual" ? "Manual" : row.line.qtySource}, before overage).
+        {" "}Give a part to the packing or unpacking; the rest stays on {run ? `${run.code || run.name} (the run)` : `the run of ${uo.code}`}. The BOM line itself does not change.
+      </p>
+      {!others.length && <div className="notice warn">{uo.code} has no column packing or unpacking semi-finished product yet: add one first.</div>}
+      {others.map((s) => {
+        const f = form[s.id];
+        return (
+          <fieldset key={s.id} className="sf-split">
+            <legend><span className="mono">{s.code || "(no code)"}</span> · {s.name} <span className="hint">({SEMI_KIND_LABEL[s.kind]})</span></legend>
+            <div className="sf-split-modes" role="radiogroup" aria-label={`What ${s.code || s.name} takes`}>
+              <label className="check"><input type="radio" name={`m-${s.id}`} checked={f.mode === "none"} onChange={() => set(s.id, { mode: "none" })} /> Nothing</label>
+              <label className="check"><input type="radio" name={`m-${s.id}`} checked={f.mode === "all"} onChange={() => set(s.id, { mode: "all" })} /> The whole line</label>
+              <label className="check" title={streams.length ? "" : "Only a line from the mass balance has streams"}><input type="radio" name={`m-${s.id}`} disabled={!streams.length} checked={f.mode === "streams"} onChange={() => set(s.id, { mode: "streams" })} /> MB streams</label>
+              <label className="check"><input type="radio" name={`m-${s.id}`} checked={f.mode === "qty"} onChange={() => set(s.id, { mode: "qty" })} /> An amount</label>
+            </div>
+            {f.mode === "streams" && (
+              <div className="sf-split-streams">
+                {streams.map((st) => (
+                  <label key={st.id} className="check">
+                    <input type="checkbox" checked={f.streams.includes(st.id)} onChange={(e) => set(s.id, { streams: e.target.checked ? [...f.streams, st.id] : f.streams.filter((x) => x !== st.id) })} />
+                    <span className="mono">{st.id}</span> · {st.v == null ? "no value" : `${fmtQty(st.v)} ${m.unit}`}
+                  </label>
+                ))}
+              </div>
+            )}
+            {f.mode === "qty" && (
+              <label className="field-inline">
+                <input className="cell-input num-input" style={{ width: 120 }} inputMode="decimal" value={f.qty} onChange={(e) => set(s.id, { qty: e.target.value })} aria-label={`Amount for ${s.code || s.name}`} />
+                <span className="mono">{m.unit}</span> <span className="hint">in {sap.scenario?.name ?? "this scenario"}, per batch, before overage</span>
+              </label>
+            )}
+          </fieldset>
+        );
+      })}
+      <p className={rest != null && rest < 0 ? "warn-text" : ""}><b>Stays on the run:</b> {rest == null ? "—" : `${fmtQty(rest)} ${m.unit}`}</p>
+      {errors.length > 0 && <div className="notice warn"><ul className="plain">{errors.map((e, i) => <li key={i}>{e}</li>)}</ul></div>}
+    </Dialog>
+  );
+}
+
+/** A list pasted from Excel: unit operation, kind, SAP code, name. A preview first; Apply updates and adds. */
+function PasteDialog(props: { project: Project; onClose: () => void; onApply: (plan: ReturnType<typeof planSemiPaste>) => void }) {
+  const [text, setText] = useState("");
+  const plan = planSemiPaste(text, props.project);
+  const ok = plan.filter((r) => r.action !== "skip");
+  return (
+    <Dialog title="Paste semi-finished codes from Excel" wide onClose={props.onClose} actions={<>
+      <span className="spacer" />
+      <button className="btn" onClick={props.onClose}>Cancel</button>
+      <button className="btn primary" disabled={!ok.length} onClick={() => props.onApply(plan)}>Apply {ok.length || ""}</button>
+    </>}>
+      <p className="hint" style={{ marginTop: 0 }}>
+        In Excel, select the rows (unit operation, kind, SAP code, name; with or without a header row) and copy them; click the box below and press Ctrl+V.
+        The kind may be empty (the unit operation's run) or <b>Column packing</b> / <b>Unpacking</b> (패킹, 언패킹 work too). Missing semi-finished products are added.
+      </p>
+      <textarea className="sf-paste" value={text} onChange={(e) => setText(e.target.value)} aria-label="Pasted rows" placeholder={"PROA\tUnit operation\t1000001\tProtein A capture\nPROA\tColumn packing\t1000101\tPROA column packing"} rows={6} />
+      {plan.length > 0 && (
+        <div className="table-wrap panel">
+          <table className="grid">
+            <thead><tr><th>Row</th><th>Unit operation</th><th>Kind</th><th>SAP code</th><th>Name</th><th>What happens</th></tr></thead>
+            <tbody>
+              {plan.map((r) => (
+                <tr key={r.line} className={r.action === "skip" ? "row-muted" : ""}>
+                  <td className="mono">{r.line}</td>
+                  <td className="mono">{r.uo?.code ?? "?"}</td>
+                  <td>{SEMI_KIND_LABEL[r.kind]}</td>
+                  <td className="mono">{r.code}</td>
+                  <td>{r.name}</td>
+                  <td>{r.action === "update" ? "Update" : r.action === "create" ? "Add" : <span className="warn-text">Skip: {r.why}</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Dialog>
   );
 }

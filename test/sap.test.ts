@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { computeBom } from "../src/bom/model";
-import { addForEveryUo, addSemi, assignLine, conversion, describeSap, removeSemi, replaceInSap, round3, sapBoms, sapDate, setBomUnit, setSapSettings, setSemi, type SapResult } from "../src/bom/sap";
+import { addForEveryUo, addSemi, applySemiPaste, assignLine, conversion, describeSap, pasteDown, pasteTable, planSemiPaste, removeSemi, replaceInSap, round3, sapBoms, sapDate, setBomUnit, setLineSplit, setSapSettings, setSemi, type SapResult } from "../src/bom/sap";
 import { sapSheets, sapWorkbook } from "../src/bom/sapExcel";
 import { describeChange } from "../src/model/history";
 import { parseProject, serializeProject } from "../src/model/project";
@@ -238,5 +238,85 @@ describe("the SAP BOM workbook", () => {
     expect([r.getCell(1).value, r.getCell(5).value, r.getCell(5).numFmt, r.getCell(8).numFmt]).toEqual(["1000101", "0010", "@", "0.000"]);
     expect(ws.getRow(1).getCell(7).note).toBeTruthy();
     expect(wb.getWorksheet("BOM header")!.getRow(1).getCell(14).value).toBe("(info) Items");
+  });
+});
+
+describe("a BOM line split between the run and its packing / unpacking", () => {
+  it("by MB streams: UFDF's DF buffer on ST-UFDF-005 goes to the unpacking, the rest (ST-UFDF-003) stays on the run", () => {
+    let { p } = setUp();
+    const ufdf = uo(p, "UFDF").id, buf = mat(p, "BUF-5001").id;
+    const r = addSemi(p, { kind: "unpacking", uoId: ufdf, code: "1000105", name: "UFDF flush and storage" });
+    p = setLineSplit(r.project, ufdf, buf, { [r.id]: { kind: "part", part: { streams: ["ST-UFDF-005"] } } });
+    const s = run(p);
+    expect(items(s, "1000105")).toEqual([["0010", "BUF-5001", 918, "L", false, null, "MB · ST-UFDF-005"]]);
+    expect(bomOf(s, "1000005").items.find((i) => i.code === "BUF-5001")).toMatchObject({ qty: 7200, source: "MB (rest)", partial: "rest" });
+    expect(s.issues.filter((i) => i.level === "error" && !i.group).map((i) => i.message)).toEqual(["No base quantity: STOR has no transfer out. Choose its output stream or type the quantity (one batch's output)."]);
+    // The BOM line is unchanged.
+    expect(computeBom(p).uos.find((u) => u.uo.code === "UFDF")!.rows.find((x) => x.material.code === "BUF-5001")!.base.receiving).toBe(8118);
+  });
+
+  it("by an amount: 200 L of PROA's water for injection to its packing, 790 L stay on the run; too much is an error", () => {
+    const { p, packing } = setUp();
+    const proa = uo(p, "PROA").id, wfi = mat(p, "UTL-0001").id;
+    let q = setLineSplit(p, proa, wfi, { [packing]: { kind: "part", part: { qty: { receiving: 200 } } } });
+    let s = run(q);
+    expect(bomOf(s, "1000101").items.map((i) => [i.code, i.qty, i.source])).toEqual([["RES-0001", 330, "Manual"], ["UTL-0001", 200, "Part (typed)"]]);
+    expect(bomOf(s, "1000001").items.find((i) => i.code === "UTL-0001")?.qty).toBe(790);
+    // The resin (given whole) stays given whole.
+    expect(q.bom.sap!.semi.find((x) => x.id === packing)!.materials).toEqual([mat(p, "RES-0001").id]);
+    q = setLineSplit(p, proa, wfi, { [packing]: { kind: "part", part: { qty: { receiving: 1200 } } } });
+    s = run(q);
+    expect(s.issues.map((i) => i.message)).toContain("UTL-0001: the parts given to 1000101 are more than the line (990 L in Receiving). Change the split.");
+    // Streams on a line that is not from the MB: an error saying so.
+    q = setLineSplit(p, proa, mat(p, "RES-0001").id, { [packing]: { kind: "part", part: { streams: ["ST-PROA-001"] } } });
+    expect(run(q).issues.map((i) => i.message)).toContain("1000101: the part of RES-0001 has no quantity: its quantity is not from the mass balance, so streams cannot split it: type an amount.");
+    // Moving the whole line clears the part; "nothing" takes it back.
+    q = setLineSplit(p, proa, wfi, { [packing]: { kind: "part", part: { qty: { receiving: 200 } } } });
+    expect(assignLine(q, proa, wfi, null).bom.sap!.semi.find((x) => x.id === packing)!.split).toBeUndefined();
+    expect(setLineSplit(q, proa, wfi, {}).bom.sap!.semi.find((x) => x.id === packing)!.split).toBeUndefined();
+    // Saved and read back.
+    expect(parseProject(serializeProject(q)).project.bom.sap).toEqual(q.bom.sap);
+  });
+});
+
+describe("codes pasted from Excel", () => {
+  it("a column of codes pasted into a code cell fills down the list (a second column = names)", () => {
+    let p = addForEveryUo(load()).project;
+    const order = p.bom.sap!.semi.map((x) => x.id);
+    const r = pasteDown(p, order, order[1], pasteTable("1000002\tCEX run\r\n1000003\n\n1000004\n"));
+    p = r.project;
+    expect(r.count).toBe(3);
+    expect(p.bom.sap!.semi.map((x) => [x.code, x.name])).toEqual([["", "Protein A, VI, depth filtration"], ["1000002", "CEX run"], ["1000003", "Mixed-mode chromatography"], ["1000004", "Virus filtration"], ["", "UF/DF and formulation"], ["", "Bulk fill"], ["", "Frozen storage -70 °C"]]);
+  });
+
+  it("a list with a header: updates the run of each unit operation and adds a packing; Korean kinds; skips what it cannot place", () => {
+    const p = addForEveryUo(load()).project;
+    const text = ["공정\t구분\t반제품코드\t반제품명", "PROA\t실행\t1000001\tProtein A capture", "PROA\t패킹\t1000101\tPROA column packing", "CEX\t\t1000002\t", "XYZ\t\t1000009\tNo such step", "MMC\t\t1000002\tDuplicate"].join("\n");
+    const plan = planSemiPaste(text, p);
+    expect(plan.map((r) => [r.line, r.uo?.code, r.kind, r.code, r.action, r.why ?? ""])).toEqual([
+      [2, "PROA", "uo", "1000001", "update", ""],
+      [3, "PROA", "packing", "1000101", "create", ""],
+      [4, "CEX", "uo", "1000002", "update", ""],
+      [5, undefined, "uo", "1000009", "skip", "unit operation not found"],
+      [6, "MMC", "uo", "1000002", "skip", "code used twice in the list"],
+    ]);
+    const r = applySemiPaste(p, plan);
+    expect([r.updated, r.created]).toEqual([2, 1]);
+    const semi = r.project.bom.sap!.semi;
+    expect(semi.find((x) => x.code === "1000001")!.name).toBe("Protein A capture");
+    expect(semi.find((x) => x.code === "1000101")).toMatchObject({ kind: "packing", uoId: uo(p, "PROA").id, name: "PROA column packing" });
+    expect(semi.find((x) => x.code === "1000002")!.name).toBe("Cation exchange");
+  });
+
+  it("a list without a header, columns in any order: the unit operation, a kind label, the code (digits), the name", () => {
+    const p = load();
+    const plan = planSemiPaste("1000001\tPROA\tProA run\nColumn packing\tPROA\t1000101\nVF\t1000004", p);
+    expect(plan.map((r) => [r.uo?.code, r.kind, r.code, r.name, r.action])).toEqual([
+      ["PROA", "uo", "1000001", "ProA run", "create"],
+      ["PROA", "packing", "1000101", "", "create"],
+      ["VF", "uo", "1000004", "", "create"],
+    ]);
+    const q = applySemiPaste(p, plan).project;
+    expect(q.bom.sap!.semi.map((x) => [x.kind, x.code, x.name])).toEqual([["uo", "1000001", "ProA run"], ["packing", "1000101", "PROA column packing"], ["uo", "1000004", "Virus filtration"]]);
   });
 });

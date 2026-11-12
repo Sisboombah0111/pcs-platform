@@ -21,7 +21,7 @@
 import type { BomResult, BomRow } from "./model";
 import { batchSize, recipeOf } from "../model/recipes";
 import { newId } from "../model/ids";
-import type { Material, Project, Scenario, SapDateFormat, SapSetup, SemiFinished, SemiKind, UnitOperation } from "../model/types";
+import type { LinePart, Material, Project, Scenario, SapDateFormat, SapSetup, SemiFinished, SemiKind, UnitOperation } from "../model/types";
 import { streamFlow, uoStreams } from "../ops/model";
 
 export const SEMI_KIND_LABEL: Record<SemiKind, string> = { uo: "Unit operation", packing: "Column packing", unpacking: "Unpacking" };
@@ -55,6 +55,8 @@ export interface SapItem {
   semiId?: string;
   /** A conversion factor is used: 1 appUnit = factor unit. */
   factor?: number;
+  /** A part of its BOM line (given to a packing / unpacking), or what is left of it after such parts. */
+  partial?: "part" | "rest";
 }
 
 export interface SapBom {
@@ -179,6 +181,33 @@ function assignment(semis: readonly SemiFinished[], uoId: string): Map<string, s
   return out;
 }
 
+/** Parts of BOM lines given to packing / unpacking semi-finished products of a unit operation: material id → [semi, part]. Lines given whole are left out. */
+function linePartsOf(semis: readonly SemiFinished[], uoId: string): Map<string, { semi: SemiFinished; part: LinePart }[]> {
+  const whole = assignment(semis, uoId);
+  const out = new Map<string, { semi: SemiFinished; part: LinePart }[]>();
+  for (const s of semis) {
+    if (s.uoId !== uoId || s.kind === "uo") continue;
+    for (const [mid, part] of Object.entries(s.split ?? {})) if (!whole.has(mid)) out.set(mid, [...(out.get(mid) ?? []), { semi: s, part }]);
+  }
+  return out;
+}
+
+/** The quantity of a part of a line in a scenario (before overage): its streams' MB values, or the amount typed. Null with the reason when it has none. */
+export function partQty(r: Pick<BomRow, "line" | "mbByStream">, part: LinePart, scenarioId: string): { qty: number | null; why?: string } {
+  if (part.streams?.length) {
+    if (r.line.qtySource !== "MB" || !r.mbByStream) return { qty: null, why: "its quantity is not from the mass balance, so streams cannot split it: type an amount" };
+    let sum = 0;
+    for (const st of part.streams) {
+      const v = r.mbByStream[st]?.[scenarioId];
+      if (v == null) return { qty: null, why: `the mass balance has no value of it on ${st}` };
+      sum += v;
+    }
+    return { qty: clean(sum) };
+  }
+  const v = part.qty?.[scenarioId];
+  return v == null ? { qty: null, why: "no amount typed for this scenario" } : { qty: v };
+}
+
 export function sapBoms(p: Pick<Project, "uos" | "materials" | "mb" | "bom" | "streams">, bom: BomResult): SapResult {
   const raw = setupOf(p);
   const setup = { ...raw, usage: raw.usage || "1", alternative: raw.alternative || "1", status: raw.status || "1", dateFormat: raw.dateFormat ?? "YYYY.MM.DD" };
@@ -243,9 +272,11 @@ export function sapBoms(p: Pick<Project, "uos" | "materials" | "mb" | "bom" | "s
     }
     b.baseUnit = unitOf(b.appBaseUnit);
 
-    // Items: the unit operation's counted lines given to this semi-finished product.
+    // Items: the unit operation's counted lines given to this semi-finished product (whole, or a part of a line).
     const given = assignment(semis, s.uoId);
-    const rows = (rowsOf.get(s.uoId) ?? []).filter((r) => !r.line.excluded && (s.kind === "uo" ? !given.has(r.material.id) : given.get(r.material.id) === s.id));
+    const parts = linePartsOf(semis, s.uoId);
+    const all = (rowsOf.get(s.uoId) ?? []).filter((r) => !r.line.excluded);
+    const rows = all.filter((r) => (s.kind === "uo" ? !given.has(r.material.id) : given.get(r.material.id) === s.id));
     const items: Omit<SapItem, "pos">[] = [];
     // The intermediate from the unit operations before (transfers in), when they have their own semi-finished product.
     if (s.kind === "uo" && setup.chain !== false) {
@@ -257,7 +288,25 @@ export function sapBoms(p: Pick<Project, "uos" | "materials" | "mb" | "bom" | "s
         items.push({ code: prev.code.trim(), name: prev.name.trim(), qty: flow?.value ?? null, sapQty: flow ? round3(flow.value) : null, unit: unitOf(flow?.unit ?? "L"), appUnit: flow?.unit ?? "L", fixed: false, scrapPct: null, source: st.id, semiId: prev.id });
       }
     }
-    for (const r of rows) items.push(rowItem(r));
+    for (const r of rows) {
+      const taken = parts.get(r.material.id);
+      if (s.kind !== "uo" || !taken?.length) { items.push(rowItem(r)); continue; }
+      // What is left of the line after the parts given to packing / unpacking.
+      const base = r.base[sid];
+      let rest: number | null = base ?? null;
+      for (const t of taken) { const q = partQty(r, t.part, sid).qty; if (rest != null && q != null) rest = clean(rest - q); }
+      if (rest != null && rest < 0) issues.push({ level: "error", key: s.id, code: b.code, message: `${r.material.code}: the parts given to ${taken.map((t) => t.semi.code || t.semi.name).join(", ")} are more than the line (${fmt(base ?? 0)} ${r.material.unit} in ${scen?.name ?? ""}). Change the split.` });
+      items.push({ ...rowItem(r, rest), source: `${rowItem(r).source} (rest)`, partial: "rest" });
+    }
+    if (s.kind !== "uo") {
+      for (const r of all) {
+        const t = parts.get(r.material.id)?.find((x) => x.semi.id === s.id);
+        if (!t) continue;
+        const q = partQty(r, t.part, sid);
+        if (q.qty == null) issues.push({ level: "error", key: s.id, code: b.code, message: `${b.code || b.name}: the part of ${r.material.code} has no quantity: ${q.why}.` });
+        items.push({ ...rowItem(r, q.qty), source: t.part.streams?.length ? `MB · ${t.part.streams.join(", ")}` : "Part (typed)", partial: "part" });
+      }
+    }
     b.items = numbered(b, items);
   }
 
@@ -271,10 +320,10 @@ export function sapBoms(p: Pick<Project, "uos" | "materials" | "mb" | "bom" | "s
     return kept.map((x, i) => ({ ...x, pos: posText(i + 1) }));
   }
 
-  function rowItem(r: BomRow): Omit<SapItem, "pos"> {
-    const v = r.base[sid];
+  function rowItem(r: BomRow, qty?: number | null): Omit<SapItem, "pos"> {
+    const v = qty === undefined ? r.base[sid] ?? null : qty;
     const source = r.line.qtySource === "manual" ? "Manual" : r.line.qtySource;
-    return materialItem(r.material, v ?? null, source, r.overagePct || null);
+    return materialItem(r.material, v, source, r.overagePct || null);
   }
 
   // ---- prepared materials: their recipe is their BOM -------------------------------------------------------------------------------
@@ -464,6 +513,35 @@ export function assignLine<T extends P>(p: T, uoId: string, materialId: string, 
       const next: SemiFinished = { ...x, materials };
       if (!materials.length) delete next.materials;
       return next;
+    }).map((x) => (x.uoId === uoId && x.split?.[materialId] ? withoutPart(x, materialId) : x)),
+  }));
+}
+
+function withoutPart(x: SemiFinished, materialId: string): SemiFinished {
+  const split = { ...(x.split ?? {}) };
+  delete split[materialId];
+  const next: SemiFinished = { ...x, split };
+  if (!Object.keys(split).length) delete next.split;
+  return next;
+}
+
+/**
+ * How a BOM line (unit operation, material) is split between the unit operation's semi-finished product and
+ * its packing / unpacking ones: for each of those, nothing, the whole line, or a part (streams or an amount).
+ */
+export type LineShare = { kind: "none" } | { kind: "all" } | { kind: "part"; part: LinePart };
+export function setLineSplit<T extends P>(p: T, uoId: string, materialId: string, shares: Record<string, LineShare>): T {
+  return withSetup(p, (s) => ({
+    ...s,
+    semi: s.semi.map((x) => {
+      if (x.uoId !== uoId || x.kind === "uo") return x;
+      const share = shares[x.id] ?? { kind: "none" };
+      let next = withoutPart(x, materialId);
+      const mats = (next.materials ?? []).filter((m) => m !== materialId);
+      next = { ...next, materials: share.kind === "all" ? [...mats, materialId] : mats };
+      if (!next.materials!.length) delete next.materials;
+      if (share.kind === "part") next = { ...next, split: { ...(next.split ?? {}), [materialId]: share.part } };
+      return next;
     }),
   }));
 }
@@ -482,7 +560,11 @@ export function setBomUnit<T extends P>(p: T, materialId: string, conv: { unit: 
 /** Material ids after Replace: the new material takes the old one's place in the semi-finished products and conversions. */
 export function replaceInSap(s: SapSetup | undefined, fromId: string, toId: string): SapSetup | undefined {
   if (!s) return s;
-  const semi = s.semi.map((x) => (x.materials?.includes(fromId) ? { ...x, materials: [...new Set(x.materials.map((m) => (m === fromId ? toId : m)))] } : x));
+  const semi = s.semi.map((x) => {
+    let y = x.materials?.includes(fromId) ? { ...x, materials: [...new Set(x.materials.map((m) => (m === fromId ? toId : m)))] } : x;
+    if (y.split?.[fromId] && !y.split[toId]) { const split = { ...y.split, [toId]: y.split[fromId] }; delete split[fromId]; y = { ...y, split }; }
+    return y;
+  });
   const next: SapSetup = { ...s, semi };
   if (s.bomUnits?.[fromId] && !s.bomUnits[toId]) {
     const bomUnits = { ...s.bomUnits, [toId]: s.bomUnits[fromId] };
@@ -509,6 +591,7 @@ export function describeSap(a: SapSetup | undefined, b: SapSetup | undefined, uo
     if (y.name !== x.name) what.push(`name “${y.name}” → “${x.name}”`);
     if (y.stream !== x.stream || y.baseQty !== x.baseQty || y.baseUnit !== x.baseUnit) what.push("base quantity");
     if (JSON.stringify(y.materials ?? []) !== JSON.stringify(x.materials ?? [])) what.push(`lines ${(y.materials ?? []).length} → ${(x.materials ?? []).length}`);
+    if (JSON.stringify(y.split ?? {}) !== JSON.stringify(x.split ?? {})) what.push(`parts of lines ${Object.keys(y.split ?? {}).length} → ${Object.keys(x.split ?? {}).length}`);
     out.push(`Semi-finished ${x.code || y.code || "(no code)"}: ${what.join("; ") || "changed"}`);
   }
   if (changed.length > 6) out.push(`Semi-finished changed, more: ${changed.length - 6}`);
@@ -520,3 +603,123 @@ export function describeSap(a: SapSetup | undefined, b: SapSetup | undefined, uo
 
 /** The checks of one BOM (its own, and component codes it uses). */
 export const checksOf = (res: Pick<SapResult, "issues">, key: string) => res.issues.filter((i) => i.level !== "note" && (i.key === key || i.keys?.includes(key)));
+
+// ---- codes pasted from Excel ---------------------------------------------------------------------------------------------------------
+
+/** Cells copied from Excel (tabs between cells; commas when a line has no tab), empty lines left out. */
+export function pasteTable(text: string): string[][] {
+  return text.replace(/\r/g, "").split("\n").map((l) => (l.includes("\t") ? l.split("\t") : l.split(/[,;]/)).map((c) => c.trim()))
+    .filter((r) => r.some((c) => c));
+}
+
+/** Codes (and names, in a second column) pasted down the list of semi-finished products, from the one pasted into. */
+export function pasteDown<T extends P>(p: T, order: readonly string[], startId: string, table: string[][]): { project: T; count: number } {
+  const at = order.indexOf(startId);
+  if (at < 0) return { project: p, count: 0 };
+  let next = p, count = 0;
+  table.forEach((r, i) => {
+    const id = order[at + i];
+    if (!id || !r[0]) return;
+    next = setSemi(next, id, { code: r[0].replace(/\s/g, ""), ...(r[1] ? { name: r[1] } : {}) });
+    count++;
+  });
+  return { project: next, count };
+}
+
+const norm = (s: string) => s.trim().toLowerCase().replace(/[\s_\-./()]/g, "");
+const PASTE_HEADS: Record<"uo" | "kind" | "code" | "name", string[]> = {
+  uo: ["uo", "uocode", "unitoperation", "unitop", "process", "step", "공정", "단위공정", "공정코드"],
+  kind: ["kind", "type", "종류", "구분", "유형"],
+  code: ["code", "sapcode", "matnr", "material", "materialnumber", "semifinished", "semifinishedcode", "자재번호", "코드", "반제품코드", "반제코드", "sap코드"],
+  name: ["name", "description", "maktx", "bomtext", "stktx", "text", "이름", "명칭", "자재명", "반제품명", "반제명"],
+};
+/** "Column packing", "패킹" → packing; "Unpacking", "언패킹" → unpacking; "Unit operation", "실행" → uo; otherwise null. */
+export function kindOf(text: string): SemiKind | null {
+  const t = text.trim().toLowerCase();
+  if (!t) return null;
+  if (/unpack|언패킹|해체|un-pack/.test(t)) return "unpacking";
+  if (/pack|패킹/.test(t)) return "packing";
+  if (/unit\s*op|^uo$|run|실행|운전|operation|공정 실행/.test(t)) return "uo";
+  return null;
+}
+
+/** A cell that is only a kind label (for a list without headers, so that a name such as "ProA run" stays a name). */
+const KIND_LABELS: Record<string, SemiKind> = {
+  unitoperation: "uo", uo: "uo", run: "uo", 실행: "uo", 단위공정: "uo", 공정: "uo",
+  columnpacking: "packing", packing: "packing", 패킹: "packing", 컬럼패킹: "packing",
+  unpacking: "unpacking", columnunpacking: "unpacking", 언패킹: "unpacking", 컬럼언패킹: "unpacking",
+};
+const kindLabel = (c: string): SemiKind | null => KIND_LABELS[norm(c)] ?? null;
+
+export interface PasteRow { line: number; uo?: UnitOperation; kind: SemiKind; code: string; name: string; action: "update" | "create" | "skip"; why?: string; semiId?: string }
+
+/**
+ * A list pasted from Excel: unit operation, kind (optional: Unit operation, Column packing, Unpacking; Korean words
+ * work), SAP code, name (optional), with or without a header row. Each row updates the semi-finished product of
+ * that unit operation and kind (packing / unpacking: the one with that name, else the n-th of that kind), or adds it.
+ */
+export function planSemiPaste(text: string, p: Pick<Project, "uos" | "bom">): PasteRow[] {
+  const table = pasteTable(text);
+  if (!table.length) return [];
+  const setup = setupOf(p);
+  const uoOf = (c: string) => p.uos.find((u) => u.code.toLowerCase() === c.trim().toLowerCase()) ?? p.uos.find((u) => u.name.trim().toLowerCase() === c.trim().toLowerCase());
+  // A header row: named columns.
+  const head = table[0].map(norm);
+  const col: Partial<Record<keyof typeof PASTE_HEADS, number>> = {};
+  for (const k of Object.keys(PASTE_HEADS) as (keyof typeof PASTE_HEADS)[]) {
+    const i = head.findIndex((h) => PASTE_HEADS[k].includes(h));
+    if (i >= 0) col[k] = i;
+  }
+  const hasHead = col.code !== undefined && !table[0].some((c) => uoOf(c));
+  const rows = hasHead ? table.slice(1) : table;
+  const seen = new Map<string, number>();
+  const used = new Set<string>();
+  const out: PasteRow[] = [];
+  rows.forEach((r, i) => {
+    const line = i + (hasHead ? 2 : 1);
+    let uo: UnitOperation | undefined, kind: SemiKind | null = null, code = "", name = "";
+    if (hasHead) {
+      uo = col.uo !== undefined ? uoOf(r[col.uo] ?? "") : undefined;
+      kind = col.kind !== undefined ? kindOf(r[col.kind] ?? "") : null;
+      code = (r[col.code!] ?? "").replace(/\s/g, "");
+      name = col.name !== undefined ? r[col.name] ?? "" : "";
+    } else {
+      // By content: the unit operation's code or name, a kind word, the code (digits first), the rest is the name.
+      const rest: string[] = [];
+      for (const c of r) {
+        if (!c) continue;
+        if (!uo && uoOf(c)) { uo = uoOf(c); continue; }
+        if (!kind && kindLabel(c)) { kind = kindLabel(c); continue; }
+        rest.push(c);
+      }
+      const ci = rest.findIndex((c) => /^\d+$/.test(c.replace(/\s/g, "")));
+      const pick = ci >= 0 ? ci : rest.findIndex((c) => !/\s/.test(c));
+      if (pick >= 0) code = rest.splice(pick, 1)[0].replace(/\s/g, "");
+      name = rest[0] ?? "";
+    }
+    const k: SemiKind = kind ?? "uo";
+    const row: PasteRow = { line, ...(uo ? { uo } : {}), kind: k, code, name, action: "skip" };
+    out.push(row);
+    if (!uo) { row.why = "unit operation not found"; return; }
+    if (!code) { row.why = "no code"; return; }
+    if (used.has(code)) { row.why = "code used twice in the list"; return; }
+    used.add(code);
+    const key = `${uo.id}|${k}`;
+    const n = seen.get(key) ?? 0;
+    seen.set(key, n + 1);
+    const same = setup.semi.filter((s) => s.uoId === uo!.id && s.kind === k);
+    const found = k === "uo" ? same[0] : (name ? same.find((s) => s.name.trim().toLowerCase() === name.trim().toLowerCase()) : undefined) ?? same[n];
+    if (k === "uo" && n > 0) { row.why = `${uo.code} has one unit-operation semi-finished product: listed twice`; return; }
+    if (found) { row.action = "update"; row.semiId = found.id; } else row.action = "create";
+  });
+  return out;
+}
+
+export function applySemiPaste<T extends P>(p: T, plan: readonly PasteRow[]): { project: T; updated: number; created: number } {
+  let next = p, updated = 0, created = 0;
+  for (const r of plan) {
+    if (r.action === "update" && r.semiId) { next = setSemi(next, r.semiId, { code: r.code, ...(r.name ? { name: r.name } : {}) }); updated++; }
+    if (r.action === "create" && r.uo) { next = addSemi(next, { kind: r.kind, uoId: r.uo.id, code: r.code, name: r.name || (r.kind === "uo" ? r.uo.name : `${r.uo.code} ${SEMI_KIND_LABEL[r.kind].toLowerCase()}`) }).project; created++; }
+  }
+  return { project: next, updated, created };
+}

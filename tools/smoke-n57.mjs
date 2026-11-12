@@ -2,7 +2,9 @@
 // adds one per unit operation, takes their codes and the plant, a PROA column packing takes the resin, a
 // polysorbate spike that SAP would round is fixed by counting it in g, the code rule set to "any" leaves no
 // error, and the SAP BOM workbook has the header, items, materials, units and checks with SAP field names. The
-// BOM lines stay as they were, and the set-up is still there after a reload.
+// BOM lines stay as they were, and the set-up is still there after a reload. Then: a list pasted from Excel
+// (Paste a list…) and a column of codes pasted into a code cell; UFDF's DF buffer split by MB stream between the
+// run and an unpacking; a packing evaluation buffer used by three columns made once (Shared preparation).
 // Usage: LANG=C.UTF-8 node tools/smoke-n57.mjs <base-url> [screenshot-prefix]
 import { createRequire } from "node:module";
 import { execSync } from "node:child_process";
@@ -45,6 +47,14 @@ const file = join(dir, "downstream-spike.pcs.json");
   const proa = p.uos.find((u) => u.code === "PROA").id;
   const ps80 = p.materials.find((m) => m.code === "CHM-0009").id;
   p.bom.lines[proa] = [...(p.bom.lines[proa] ?? []), { materialId: ps80, qtySource: "manual", manualQty: { sending: 0.0021, receiving: 0.01575 }, note: "PS80 spike" }];
+  // A packing evaluation buffer, 400 L batches with one filter each, 100 L for the packing of each of three columns.
+  const nacl = p.materials.find((m) => m.code === "CHM-0002").id;
+  p.materials.push({ id: "mat_n57flt", code: "FLT-0090", name: "PKE buffer filter", unit: "EA", category: "Filter" });
+  p.materials.push({ id: "mat_n57pke", code: "BUF-9001", name: "Column packing evaluation buffer", unit: "L", category: "Buffer", recipe: { per: 100, batch: 400, components: [{ materialId: nacl, qty: 2 }, { materialId: "mat_n57flt", qty: 1, basis: "batch" }] } });
+  for (const code of ["PROA", "CEX", "MMC"]) {
+    const id = p.uos.find((u) => u.code === code).id;
+    p.bom.lines[id] = [...(p.bom.lines[id] ?? []), { materialId: "mat_n57pke", qtySource: "manual", manualQty: { sending: 100, receiving: 100 }, note: "packing evaluation" }];
+  }
   writeFileSync(file, JSON.stringify(p));
 }
 
@@ -68,8 +78,8 @@ const before = await resinLine();
 
 // 1. The sheet before any set-up: the prepared materials are listed already.
 await sheetTab(/^Semi-finished/);
-check("Semi-finished sheet: the explanation, and the 14 prepared materials listed (their recipe is their BOM)",
-  await page.getByText("Split the BOM into semi-finished products for SAP.").isVisible() && await page.locator(".sf-table tbody tr:has-text('Prepared (recipe)')").count() === 14);
+check("Semi-finished sheet: the explanation, and the 15 prepared materials listed (their recipe is their BOM)",
+  await page.getByText("Split the BOM into semi-finished products for SAP.").isVisible() && await page.locator(".sf-table tbody tr:has-text('Prepared (recipe)')").count() === 15);
 await snap("1-start");
 
 // 2. One per unit operation, codes, plant.
@@ -119,7 +129,7 @@ check("after “Use g”: the item is 15.750 G and the check is gone", /CHM-0009
 
 // 5. Codes: the example's codes are not 7-digit numbers (one line, listed on demand); "any code" leaves no error.
 const codesLine = checks.locator("li", { hasText: "have codes that are not a 7-digit number" });
-check("the example's material codes: one line (39 materials), listed on demand", /^error 39 materials/.test(flat(await codesLine.innerText())));
+check("the example's material codes: one line (41 materials), listed on demand", /^error 41 materials/.test(flat(await codesLine.innerText())));
 await panel("SAP settings").locator("input[title^='Material numbers are numbers']").fill("0");
 await wait(400);
 const head = flat(await panel("Semi-finished products").locator(".section-head").innerText());
@@ -133,7 +143,7 @@ const H = x["BOM header"].rows, I = x["BOM items"].rows;
 const today = new Date().toLocaleDateString("sv-SE").replace(/-/g, ".");
 check("BOM header: MATNR … STKTX; 1000001 at plant 1000, base 2,824.8 L, valid from today (YYYY.MM.DD)",
   H[0].slice(0, 9).join(",") === "MATNR,WERKS,STLAN,STLAL,DATUV,BMENG,BMEIN,STLST,STKTX" && H.some((r) => r.slice(0, 8).join("|") === `1000001|1000|1|1|${today}|2824.8|L|1`), H[2]?.join("|"));
-check("BOM header: 8 semi-finished + 14 prepared = 22 BOMs; STOR from ST-FILL-STOR 453.6 L", H.length === 23 && H.some((r) => r[0] === "1000007" && r[5] === "453.6"));
+check("BOM header: 8 semi-finished + 15 prepared = 23 BOMs; STOR from ST-FILL-STOR 453.6 L", H.length === 24 && H.some((r) => r[0] === "1000007" && r[5] === "453.6"));
 check("BOM items: 0010 text, CEX takes 1000001 2,824.8 L; the packing has RES-0001; PS80 15.75 G",
   I.some((r) => r.slice(0, 9).join("|") === "1000002|1000|1|1|0010|L|1000001|2824.8|L") && I.some((r) => r[0] === "1000101" && r[6] === "RES-0001" && r[7] === "330") && I.some((r) => r[0] === "1000001" && r[6] === "CHM-0009" && r[7] === "15.75" && r[8] === "G" && r[10] === "10"));
 const posCell = x["BOM items"].ws.getRow(2).getCell(5);
@@ -153,6 +163,66 @@ await wait(1500);
 await tab("BOM");
 await sheetTab(/^Semi-finished \(8\)/);
 check("after a reload: 8 semi-finished products, the packing with its resin", await page.locator(".sf-table input[aria-label^='SAP code']").count() === 8 && /1000101/.test(await panel("Semi-finished products").innerText().then(() => page.locator(".sf-table input[aria-label^='SAP code']").evaluateAll((els) => els.map((e) => e.value).join(",")))));
+
+// 8. A list pasted from Excel: PROA's code changed, an unpacking for UFDF added.
+const sfPanel = panel("Semi-finished products");
+await sfPanel.getByRole("button", { name: "Paste a list…" }).click();
+await page.locator(".dialog textarea[aria-label='Pasted rows']").fill("Unit operation\tKind\tSAP code\tName\nPROA\tUnit operation\t1000011\tProtein A capture\nUFDF\t언패킹\t1000105\tUFDF flush and storage\nXYZ\t\t1000099\t");
+await wait(300);
+const prev = flat(await page.locator(".dialog table").innerText());
+check("Paste a list…: a preview (update PROA, add the UFDF unpacking, skip an unknown unit operation)", /2 PROA Unit operation 1000011 Protein A capture Update/.test(prev) && /3 UFDF Unpacking 1000105 UFDF flush and storage Add/.test(prev) && /4 \? Unit operation 1000099 Skip: unit operation not found/.test(prev), prev);
+await page.locator(".dialog").getByRole("button", { name: /^Apply/ }).click();
+await wait(500);
+const codesNow = () => page.locator(".sf-table input[aria-label^='SAP code']").evaluateAll((els) => els.map((e) => e.value));
+check("applied: 9 semi-finished products, PROA's run is 1000011, the UFDF unpacking 1000105", (await codesNow()).length === 9 && (await codesNow()).includes("1000011") && (await codesNow()).includes("1000105"), (await codesNow()).join(","));
+
+// 9. A column of codes pasted into CEX's code cell fills CEX and MMC.
+await sfRow("Unit operation", "CEX").locator("input[aria-label^='SAP code']").evaluate((el) => {
+  const dt = new DataTransfer(); dt.setData("text/plain", "2000002\r\n2000003\r\n");
+  el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+});
+await wait(400);
+check("a column pasted into CEX's code: CEX 2000002, MMC 2000003", (await sfRow("Unit operation", "CEX").locator("input[aria-label^='SAP code']").inputValue()) === "2000002" && (await sfRow("Unit operation", "MMC").locator("input[aria-label^='SAP code']").inputValue()) === "2000003");
+
+// 10. UFDF's DF buffer (ST-UFDF-003 7,200 L + ST-UFDF-005 918 L): the flush stream to the unpacking.
+await sfRow("Unit operation", "UFDF").locator("button.linkish").click();
+await wait(400);
+const ufdfItems = panel("Items of 1000005");
+await ufdfItems.getByRole("button", { name: "Split BUF-5001…" }).click();
+await wait(300);
+const dlg = page.locator(".dialog");
+await dlg.locator("fieldset", { hasText: "1000105" }).getByLabel("MB streams").check();
+await dlg.locator("fieldset", { hasText: "1000105" }).locator("label", { hasText: "ST-UFDF-005" }).locator("input").check();
+await wait(200);
+const dlgText = flat(await dlg.innerText());
+check("Split…: the streams with their values; 7,200 L stay on the run", /ST-UFDF-003 · 7,200 L/.test(dlgText) && /ST-UFDF-005 · 918 L/.test(dlgText) && /Stays on the run: 7,200 L/.test(dlgText), dlgText.slice(0, 300));
+if (shot) await page.screenshot({ path: `${shot}-4-split.png` });
+await dlg.getByRole("button", { name: "Save" }).click();
+await wait(400);
+const ufdfRow = flat(await ufdfItems.locator("tr", { hasText: "BUF-5001" }).innerText());
+check("UFDF's run keeps 7,200 L of BUF-5001 (rest of the line)", /7200\.000/.test(ufdfRow) && /MB \(rest\)/.test(ufdfRow) && /Rest of the line/.test(ufdfRow), ufdfRow);
+await sfRow("Unpacking", "UFDF").locator("button.linkish").click();
+await wait(400);
+check("the unpacking takes 918 L from ST-UFDF-005", /BUF-5001.*918\.000\s*L.*MB · ST-UFDF-005/.test(flat(await panel("Items of 1000105").locator("tbody").innerText())));
+
+// 11. The packing evaluation buffer: made once for its three lines → 1 filter instead of 3.
+const flt = async () => flat(await page.locator("section[aria-label='Totals'] tr", { hasText: "FLT-0090" }).innerText());
+await sheetTab(/^Totals/);
+const before3 = await flt();
+await page.getByRole("tab", { name: /^Materials/ }).click();
+await wait(700);
+await page.getByLabel("Recipe of BUF-9001").click();
+await wait(300);
+await page.getByLabel("Made once for all its BOM lines").check();
+await page.locator(".dialog").getByRole("button", { name: "Save recipe" }).click();
+await wait(400);
+await tab("BOM");
+await sheetTab(/^Totals/);
+const after1 = await flt();
+check("shared preparation: FLT-0090 3 → 1 (one 400 L batch for 300 L)", /\b3\s+3\b/.test(before3) && /\b1\s+1\b/.test(after1), `${before3} → ${after1}`);
+await sheetTab(/^PROA/);
+const pke = flat(await page.locator("tr[data-bom-line='PROA|BUF-9001'] td.bom-mat").getAttribute("data-full") ?? "");
+check("the PROA line says it is prepared once for its 3 lines", /Prepared once for its 3 lines \(PROA, CEX, MMC\)/.test(pke), pke.slice(0, 200));
 
 check("no page errors", errors.length === 0, errors.slice(0, 3).join(" | "));
 await browser.close();

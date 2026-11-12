@@ -44,6 +44,8 @@ export interface BomRow {
   manualOnly: boolean;
   /** What each source offers for this UO and material. */
   mb: Values | null;
+  /** The MB values by stream (the counted rows), when the MB has the material here (N5.7: a part of a line for a semi-finished product). */
+  mbByStream?: Record<string, Values>;
   pfd: number | null;
   /** Value from the chosen source, before overage. */
   base: Values;
@@ -88,6 +90,9 @@ export interface BomPart {
   /** Set when the recipes loop back to a material above it: the part is not counted. */
   loop?: string;
   backups: BomBackup[];
+  /** The parent is prepared once for all its lines (recipe "shared"): its total over them, and how many lines share it. */
+  pool?: Values;
+  poolLines?: number;
 }
 
 export interface BomBackup {
@@ -198,12 +203,13 @@ export function batchesFor(m: Material, qty: Values, scen: Scenario[]): Values |
  * is followed by its own components). A component already above it in the chain is a loop: shown,
  * not counted, and not followed.
  */
-export function explodeRecipe(parent: Material, parentQty: Values, scen: Scenario[], matById: Map<string, Material>, depth = 1, path: string[] = [parent.id]): BomPart[] {
+export function explodeRecipe(parent: Material, parentQty: Values, scen: Scenario[], matById: Map<string, Material>, depth = 1, path: string[] = [parent.id], pool?: { qty: Values; lines: number }): BomPart[] {
   const recipe = recipeOf(parent);
   if (!recipe) return [];
   const out: BomPart[] = [];
   const size = batchSize(recipe);
-  const batches = batchesFor(parent, parentQty, scen);
+  // Prepared once for several lines (N5.7): batches of the pooled total; each line takes its share of them.
+  const batches = batchesFor(parent, pool ? pool.qty : parentQty, scen);
   for (const c of recipe.components) {
     const material = matById.get(c.materialId);
     if (!material) continue;
@@ -214,15 +220,18 @@ export function explodeRecipe(parent: Material, parentQty: Values, scen: Scenari
     for (const s of scen) {
       const pq = parentQty[s.id];
       const n = batches?.[s.id] ?? null;
+      const total = pool?.qty[s.id];
+      const share = pool ? (pq != null && total ? pq / total : 0) : 1;
       if (pq == null) base[s.id] = null;
-      else if (c.basis === "batch") base[s.id] = clean(n! * c.qty);
-      else base[s.id] = clean(((recipe.wholeBatches && size != null ? n! * size : pq) * c.qty) / recipe.per);
+      else if (c.basis === "batch") base[s.id] = clean(n! * c.qty * share);
+      else base[s.id] = clean(((recipe.wholeBatches && size != null ? n! * size * share : pq) * c.qty) / recipe.per);
       qty[s.id] = base[s.id] == null || loop ? null : withOverage(base[s.id]!, overagePct);
     }
     const part: BomPart = { material, depth, parent, recipeQty: c.qty, per: recipe.per, base, overagePct, qty, backups: [] };
     if (c.basis === "batch") part.basis = "batch";
     if (size != null) part.batch = size;
     if (batches) part.parentBatches = batches;
+    if (pool) { part.pool = pool.qty; part.poolLines = pool.lines; }
     if (loop) {
       part.loop = `Recipe loop: ${[...path, material.id].map((id) => matById.get(id)?.code ?? "?").join(" → ")}. Not counted; fix the recipes on the Materials screen.`;
       out.push(part);
@@ -244,6 +253,8 @@ export function computeBom(p: Pick<Project, "uos" | "materials" | "bom" | "mb" |
   const mbOffer = new Map<string, Map<string, Values>>();
   /** uoId → materialId → streams whose counted MB rows have it (to spot a solution and its chemicals on one stream). */
   const mbStreams = new Map<string, Map<string, Set<string>>>();
+  /** uoId → materialId → streamId → values of its counted MB rows. */
+  const mbByStream = new Map<string, Map<string, Record<string, Values>>>();
   const leftOut = new Map<string, Map<string, string[]>>();
   let leftOutCount = 0;
   for (const a of appliedRows(p)) {
@@ -265,6 +276,17 @@ export function computeBom(p: Pick<Project, "uos" | "materials" | "bom" | "mb" |
     const st = mbStreams.get(a.uo.id) ?? new Map<string, Set<string>>();
     st.set(m.id, (st.get(m.id) ?? new Set<string>()).add(a.row.streamId));
     mbStreams.set(a.uo.id, st);
+    const vs = mbByStream.get(a.uo.id) ?? new Map<string, Record<string, Values>>();
+    const perStream = vs.get(m.id) ?? {};
+    const sv: Values = perStream[a.row.streamId] ?? {};
+    for (const s of scen) {
+      const v = a.row.values[s.id];
+      if (v != null) sv[s.id] = Number(((sv[s.id] ?? 0) + v).toPrecision(12));
+      else if (!(s.id in sv)) sv[s.id] = null;
+    }
+    perStream[a.row.streamId] = sv;
+    vs.set(m.id, perStream);
+    mbByStream.set(a.uo.id, vs);
     const byMat = mbOffer.get(a.uo.id) ?? new Map<string, Values>();
     const cur = byMat.get(m.id) ?? {};
     for (const s of scen) {
@@ -335,7 +357,10 @@ export function computeBom(p: Pick<Project, "uos" | "materials" | "bom" | "mb" |
       issueCount += issues.length;
       const backups = line.excluded ? [] : backupsFor(material, qty, scen, matById);
       const batches = line.excluded ? null : batchesFor(material, qty, scen);
-      rows.push({ uoId: uo.id, material, line, stored: !!saved, manualOnly: !mb && pfd == null && !out.length, mb, pfd, base, overagePct, qty, issues, notes, leftOut: out, parts, backups, batches });
+      const row: BomRow = { uoId: uo.id, material, line, stored: !!saved, manualOnly: !mb && pfd == null && !out.length, mb, pfd, base, overagePct, qty, issues, notes, leftOut: out, parts, backups, batches };
+      const byStream = mbByStream.get(uo.id)?.get(matId);
+      if (byStream) row.mbByStream = byStream;
+      rows.push(row);
     }
     // A stream whose MB rows list a solution and also one of its chemicals: probably counted twice.
     const st = mbStreams.get(uo.id);
@@ -352,6 +377,47 @@ export function computeBom(p: Pick<Project, "uos" | "materials" | "bom" | "mb" |
     }
     rows.sort((a, b) => (a.material.category ?? "").localeCompare(b.material.category ?? "") || a.material.code.localeCompare(b.material.code));
     if (rows.length || onMap.has(uo.id)) uos.push({ uo, onMap: onMap.has(uo.id), rows });
+  }
+
+  // Prepared once for all its lines (recipe "shared", N5.7): the batches are those of the total over its
+  // counted lines; each line takes its share of the components (per-batch ones too), so the totals are one
+  // preparation's. A material with one counted line is counted as before.
+  const pools = new Map<string, { qty: Values; lines: number; rows: BomRow[] }>();
+  for (const u of uos) for (const r of u.rows) {
+    if (r.line.excluded || !recipeOf(r.material)?.shared) continue;
+    const pool = pools.get(r.material.id) ?? { qty: {}, lines: 0, rows: [] };
+    for (const s of scen) {
+      const v = r.qty[s.id];
+      if (v != null) pool.qty[s.id] = clean((pool.qty[s.id] ?? 0) + v);
+      else if (!(s.id in pool.qty)) pool.qty[s.id] = null;
+    }
+    pool.lines++;
+    pool.rows.push(r);
+    pools.set(r.material.id, pool);
+  }
+  for (const [id, pool] of [...pools]) {
+    if (pool.lines < 2) { pools.delete(id); continue; }
+    const m = pool.rows[0].material;
+    const n = batchesFor(m, pool.qty, scen);
+    const where = [...new Set(pool.rows.map((r) => uos.find((u) => u.uo.id === r.uoId)?.uo.code ?? "?"))].join(", ");
+    // The last line takes what is left of the one preparation, so that the shares add up to it exactly.
+    const full = explodeRecipe(m, pool.qty, scen, matById, 1, [m.id]).filter((x) => x.depth === 1);
+    for (const r of pool.rows) r.parts = explodeRecipe(m, r.qty, scen, matById, 1, [m.id], { qty: pool.qty, lines: pool.lines });
+    const tops = pool.rows.map((r) => r.parts.filter((x) => x.depth === 1));
+    full.forEach((fp, i) => {
+      for (const s of scen) for (const key of ["base", "qty"] as const) {
+        const want = fp[key][s.id];
+        let at = -1;
+        tops.forEach((t, j) => { if (t[i]?.[key][s.id] != null) at = j; });
+        if (want == null || at < 0 || fp.loop) continue;
+        const others = tops.reduce((sum, t, j) => (j === at ? sum : sum + (t[i]?.[key][s.id] ?? 0)), 0);
+        tops[at][i][key][s.id] = clean(want - others);
+      }
+    });
+    for (const r of pool.rows) {
+      r.batches = null;
+      r.notes.push(`Prepared once for its ${pool.lines} lines (${where}): ${scen.map((s) => `${s.name} ${pool.qty[s.id] == null ? "–" : fmt(pool.qty[s.id]!)} ${m.unit}${n ? ` in ${n[s.id] ?? "–"} batch${n[s.id] === 1 ? "" : "es"}` : ""}`).join(", ")}. Its components here are this line's share.`);
+    }
   }
 
   // Totals per material over all UOs (lines not counted are left out): what to buy (lines and recipe
@@ -372,7 +438,8 @@ export function computeBom(p: Pick<Project, "uos" | "materials" | "bom" | "mb" |
     const map = recipeOf(material) ? prep : buy;
     const t = map.get(material.id) ?? { material, qty: {}, incomplete: {}, uos: [], via: [], fromRecipes: null };
     addTo(t, qty, uoCode);
-    const n = batchesFor(material, qty, scen);
+    // A pooled preparation's lines are counted as one preparation, below.
+    const n = !via && pools.has(material.id) ? null : batchesFor(material, qty, scen);
     if (n) {
       const b: Values = t.batches ?? {};
       for (const s of scen) b[s.id] = n[s.id] == null ? b[s.id] ?? null : (b[s.id] ?? 0) + n[s.id]!;
@@ -405,6 +472,14 @@ export function computeBom(p: Pick<Project, "uos" | "materials" | "bom" | "mb" |
         addBackups(part.backups, u.uo.code);
       }
     }
+  }
+  for (const [id, pool] of pools) {
+    const t = prep.get(id);
+    const n = t ? batchesFor(t.material, pool.qty, scen) : null;
+    if (!t || !n) continue;
+    const b: Values = t.batches ?? {};
+    for (const s of scen) b[s.id] = n[s.id] == null ? b[s.id] ?? null : (b[s.id] ?? 0) + n[s.id]!;
+    t.batches = b;
   }
   const byCat = (a: { material: Material }, b: { material: Material }) => (a.material.category ?? "").localeCompare(b.material.category ?? "") || a.material.code.localeCompare(b.material.code);
   return {

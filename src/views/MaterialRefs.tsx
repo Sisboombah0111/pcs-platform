@@ -30,6 +30,7 @@ export function RecipeDialog(props: { material: Material; materials: Material[];
   const [note, setNote] = useState(m.recipe?.note ?? "");
   const [batch, setBatch] = useState(m.recipe?.batch != null ? String(m.recipe.batch) : "");
   const [whole, setWhole] = useState(!!m.recipe?.wholeBatches);
+  const [shared, setShared] = useState(!!m.recipe?.shared);
   const [tryQty, setTryQty] = useState(String(m.recipe?.batch ? m.recipe.batch * 9.9 : m.recipe?.per ?? 1000));
   const byId = new Map(materials.map((x) => [x.id, x]));
   const options = materials.filter((x) => x.id !== m.id).sort((a, b) => a.code.localeCompare(b.code));
@@ -54,6 +55,7 @@ export function RecipeDialog(props: { material: Material; materials: Material[];
       ...(note.trim() ? { note: note.trim() } : {}),
       ...(batchN > 0 ? { batch: batchN } : {}),
       ...(batchN > 0 && whole ? { wholeBatches: true } : {}),
+      ...(shared ? { shared: true } : {}),
     }
     : undefined;
   const loop = recipe ? loopWith(materials, m.id, recipe) : null;
@@ -110,7 +112,11 @@ export function RecipeDialog(props: { material: Material; materials: Material[];
           <input type="checkbox" checked={whole && batchN > 0} disabled={!(batchN > 0)} onChange={(e) => setWhole(e.target.checked)} aria-label="Make every batch in full" />
           <span>Make every batch in full: count the components {perLabel} for batches × batch size, not for the quantity needed</span>
         </label>
-        {anyPerBatch && !(batchN > 0) && <span className="hint">No batch size: each BOM line is one batch.</span>}
+        {anyPerBatch && !(batchN > 0) && <span className="hint">{shared ? "No batch size: one batch for all its BOM lines." : "No batch size: each BOM line is one batch."}</span>}
+        <label className="check" title="For a buffer made once and used in several places (a packing evaluation buffer for three columns). Not ticked: each BOM line is prepared on its own (the same buffer made again for each use).">
+          <input type="checkbox" checked={shared} onChange={(e) => setShared(e.target.checked)} aria-label="Made once for all its BOM lines" />
+          <span>Made once for all its BOM lines: count the batches (and bags, filters per batch) for their total, not line by line</span>
+        </label>
       </div>
       <div className="table-wrap panel" style={{ marginTop: 10 }}>
         <table className="grid">

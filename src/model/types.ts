@@ -68,6 +68,11 @@ export interface Recipe {
   batch?: number;
   /** Make every batch in full: proportional components are counted for batches × batch size, not for the quantity needed. */
   wholeBatches?: boolean;
+  /**
+   * Made once and shared by all its BOM lines (N5.7: a packing evaluation buffer for three columns): batches are
+   * counted for the total over the lines, not line by line. Not set: each line is prepared on its own.
+   */
+  shared?: boolean;
 }
 
 export interface BackupMaterial {
@@ -225,6 +230,14 @@ export interface SemiFinished {
   baseUnit?: string;
   /** packing / unpacking: the BOM lines of its unit operation it takes (material ids). The others stay on the unit operation's. */
   materials?: string[];
+  /** packing / unpacking: a part of a BOM line (by material id); the rest of the line stays on the unit operation's. */
+  split?: Record<string, LinePart>;
+}
+
+/** A part of a BOM line: the MB amounts of some of its streams, or an amount typed per scenario (in the material's unit, before overage). */
+export interface LinePart {
+  streams?: string[];
+  qty?: Record<string, number>;
 }
 
 /** Settings of the SAP BOM sheets (CS01 / upload) and the semi-finished products. */

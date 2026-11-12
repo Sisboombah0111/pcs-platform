@@ -205,7 +205,7 @@ describe("materials file: Recipes and Backups sheets", () => {
     const list = sampleMaterials();
     const rec = [RECIPE_EXPORT_HEADER, ...recipeRows(list)].map((r) => r.map((c) => (c == null ? "" : String(c))));
     const bak = [BACKUP_EXPORT_HEADER, ...backupRows(list)].map((r) => r.map((c) => (c == null ? "" : String(c))));
-    expect(rec[1]).toEqual(["MAT-0007", "Sodium Bicarbonate 7.5 %", "1000", "L", "MAT-0040", "Sodium Bicarbonate (powder)", "75", "kg", "", "", "", "Example: 75 g/L sodium bicarbonate, WFI to volume"]);
+    expect(rec[1]).toEqual(["MAT-0007", "Sodium Bicarbonate 7.5 %", "1000", "L", "MAT-0040", "Sodium Bicarbonate (powder)", "75", "kg", "", "", "", "Example: 75 g/L sodium bicarbonate, WFI to volume", ""]);
     const bare = list.map((m) => { const x = { ...m }; delete x.recipe; delete x.backups; return x; });
     const plan = planRefsImport(rec, bak, bare);
     expect(plan.errors).toEqual([]);

@@ -185,7 +185,7 @@ export const MATERIAL_EXPORT_HEADER = ["Code", "Name", "Unit", "Category", "Spec
 
 // ---- recipes and backups as sheets (export and import) ------------------------------------------
 
-export const RECIPE_EXPORT_HEADER = ["Code", "Name", "Per", "Unit", "Component code", "Component", "Quantity", "Component unit", "Basis", "Batch size", "Whole batches", "Note"];
+export const RECIPE_EXPORT_HEADER = ["Code", "Name", "Per", "Unit", "Component code", "Component", "Quantity", "Component unit", "Basis", "Batch size", "Whole batches", "Note", "Shared preparation"];
 export const BACKUP_EXPORT_HEADER = ["Code", "Name", "Backup code", "Backup", "Ratio", "Note"];
 
 /**
@@ -201,7 +201,7 @@ export function recipeRows(materials: readonly Material[]): (string | number | u
     const r = m.recipe;
     r.components.forEach((c, i) => {
       const comp = byId.get(c.materialId);
-      rows.push([m.code, m.name, r.per, m.unit, comp?.code, comp?.name, c.qty, comp?.unit, c.basis === "batch" ? "Per batch" : undefined, r.batch, r.batch && r.wholeBatches ? "Yes" : undefined, i === 0 ? r.note : undefined]);
+      rows.push([m.code, m.name, r.per, m.unit, comp?.code, comp?.name, c.qty, comp?.unit, c.basis === "batch" ? "Per batch" : undefined, r.batch, r.batch && r.wholeBatches ? "Yes" : undefined, i === 0 ? r.note : undefined, r.shared ? "Yes" : undefined]);
     });
   }
   return rows;
@@ -224,6 +224,7 @@ const RECIPE_ALIASES = {
   basis: ["basis", "countedper", "산정기준", "기준방식"],
   batch: ["batchsize", "batch", "batchvolume", "배치크기", "배치", "조제단위", "조제량"],
   whole: ["wholebatches", "fullbatches", "wholebatch", "전량조제", "배치전량"],
+  shared: ["sharedpreparation", "shared", "onepreparation", "preparedonce", "공유조제", "한번조제", "나눠씀"],
   unit: ["unit", "uom", "단위"],
   component: ["componentcode", "chemicalcode", "ingredientcode", "rawmaterialcode", "원료코드", "성분코드"],
   qty: ["quantity", "qty", "amount", "수량", "함량", "투입량"],
@@ -255,7 +256,7 @@ const NO = ["", "no", "n", "false", "0", "x", "아니오"];
 
 export interface RefsPlan {
   /** Prepared materials (by code) whose recipe the file sets; `changed` = differs from the list. */
-  recipes: { code: string; per: number; components: { code: string; qty: number; basis?: "batch" }[]; batch?: number; wholeBatches?: boolean; note?: string; changed: boolean }[];
+  recipes: { code: string; per: number; components: { code: string; qty: number; basis?: "batch" }[]; batch?: number; wholeBatches?: boolean; shared?: boolean; note?: string; changed: boolean }[];
   /** Materials (by code) whose backups the file sets. */
   backups: { code: string; backups: { code: string; ratio?: number; note?: string }[]; changed: boolean }[];
   errors: { sheet: string; row: number; message: string }[];
@@ -302,6 +303,8 @@ export function planRefsImport(recipeTable: unknown[][] | null, backupTable: unk
         if (batch !== undefined && (!Number.isFinite(batch) || batch <= 0)) { err(`${code}: Batch size '${batchText}' is not a number > 0.`); continue; }
         const wholeText = cell(cells, col.whole).toLowerCase();
         if (!YES.includes(wholeText) && !NO.includes(wholeText)) { err(`${code}: Whole batches '${cell(cells, col.whole)}' is not Yes or empty.`); continue; }
+        const sharedText = cell(cells, col.shared).toLowerCase();
+        if (!YES.includes(sharedText) && !NO.includes(sharedText)) { err(`${code}: Shared preparation '${cell(cells, col.shared)}' is not Yes or empty.`); continue; }
         const r = map.get(code) ?? { code, per, components: [], changed: false };
         if (r.per !== per) { err(`${code}: Per ${per} differs from ${r.per} on an earlier row.`); continue; }
         if (batch !== undefined && r.batch !== undefined && r.batch !== batch) { err(`${code}: Batch size ${batch} differs from ${r.batch} on an earlier row.`); continue; }
@@ -309,6 +312,7 @@ export function planRefsImport(recipeTable: unknown[][] | null, backupTable: unk
         r.components.push(BATCH_BASIS.includes(basisText) ? { code: comp, qty, basis: "batch" } : { code: comp, qty });
         if (batch !== undefined) r.batch = batch;
         if (YES.includes(wholeText)) r.wholeBatches = true;
+        if (YES.includes(sharedText)) r.shared = true;
         const note = cell(cells, col.note);
         if (note && !r.note) r.note = note;
         map.set(code, r);
@@ -374,6 +378,7 @@ export function applyRefsImport(materials: readonly Material[], plan: Pick<RefsP
       if (note) recipe.note = note;
       if (r.batch !== undefined) recipe.batch = r.batch;
       if (r.batch !== undefined && r.wholeBatches) recipe.wholeBatches = true;
+      if (r.shared) recipe.shared = true;
       next = withRecipe(next, recipe);
     }
     const b = backups.get(m.code);

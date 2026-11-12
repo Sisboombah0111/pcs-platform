@@ -168,6 +168,7 @@ export function readMaterialRefs(raw: Record<string, unknown>): Pick<Material, "
     if (typeof r.note === "string" && r.note.trim()) out.recipe.note = r.note;
     if (r.batch != null && r.batch !== "") out.recipe.batch = Number(r.batch);
     if (r.wholeBatches === true) out.recipe.wholeBatches = true;
+    if (r.shared === true) out.recipe.shared = true;
   }
   if (Array.isArray(raw.backups)) {
     out.backups = (raw.backups as unknown[]).filter(isObj).filter((b) => typeof b.materialId === "string").map((b) => {
@@ -194,6 +195,6 @@ export function componentText(qty: number, comp: Pick<Material, "unit" | "code">
 /** "Batches of 200 L, made in full" style summary of a recipe's batch settings, or "" when it has none. */
 export function batchText(r: Recipe | null | undefined, unit: string): string {
   const size = batchSize(r);
-  if (!r || size == null) return r?.components.some((c) => c.basis === "batch") ? "one batch per BOM line" : "";
-  return `batches of ${nf.format(size)} ${unit}${r.wholeBatches ? ", made in full" : ""}`;
+  if (!r || size == null) return r?.components.some((c) => c.basis === "batch") ? (r.shared ? "one batch for all its BOM lines" : "one batch per BOM line") : "";
+  return `batches of ${nf.format(size)} ${unit}${r.wholeBatches ? ", made in full" : ""}${r.shared ? ", one preparation for all its lines" : ""}`;
 }
