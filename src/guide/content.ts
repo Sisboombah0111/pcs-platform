@@ -193,6 +193,7 @@ export const SCREENS: Record<Screen, { title: Bilingual; items: Bilingual[] }> =
       b("Hover a line for + Backup at the end of its Material cell. An obsolete material shows Replace… first in the cell. Reset = back to the automatic source and overage.", "줄에 마우스를 올리면 Material 칸 끝에 + Backup. 단종 자재는 칸 맨 앞에 Replace…. Reset = 자동 출처와 기본 여유율로."),
       b("Totals sheet (and the end of All): Totals per material, Prepared in-house (with batches), Backup materials. Drag a header edge to resize columns.", "Totals 시트(All의 끝에도): Totals per material, Prepared in-house(배치 수 포함), Backup materials. 머리글 경계를 끌어 열 너비 조절."),
       b("Semi-finished sheet (SAP): Add one for every unit operation, enter the SAP codes and the plant; + Column packing / Unpacking takes the lines you give it (resin, packing buffer …). Buffers and media with a recipe are semi-finished under their MatCode. Checks lists what SAP would refuse (codes, base quantity, 3-decimal rounding with Use g); SAP BOM Excel… (or ribbon › SAP BOM) writes the header and item sheets. The BOM lines do not change.", "Semi-finished 시트(SAP): Add one for every unit operation으로 단위공정마다 반제품을 만들고 SAP 코드와 플랜트를 입력합니다. + Column packing / Unpacking은 넘겨 준 줄(레진, 패킹 버퍼 등)만 가집니다. 레시피가 있는 버퍼·배지는 MatCode로 반제품이 됩니다. Checks에 SAP가 거부할 것(코드, 기준 수량, 소수점 셋째 자리 반올림 → Use g)이 나오고, SAP BOM Excel…(또는 리본 › SAP BOM)이 헤더·아이템 시트를 씁니다. BOM 줄은 바뀌지 않습니다."),
+      b("Semi-finished, more: Split… on an item gives a part of a BOM line to the packing or unpacking (MB streams or an amount); the rest stays on the run. Paste a column of codes from Excel into a code cell to fill the rows below, or Paste a list… (unit operation, kind, code, name) to update and add semi-finished products at once.", "반제품 더 보기: 아이템의 Split…으로 BOM 줄의 일부(MB 스트림 또는 양)를 패킹·언패킹에 주고, 나머지는 실행 반제품에 남습니다. 엑셀에서 코드 한 열을 복사해 코드 칸에 붙여넣으면 아래 행까지 채워지고, Paste a list…(단위공정, 종류, 코드, 이름)로 반제품을 한 번에 고치거나 추가합니다."),
     ],
   },
   materials: {
@@ -205,6 +206,7 @@ export const SCREENS: Record<Screen, { title: Bilingual; items: Bilingual[] }> =
       b("Changed a code? The yellow bar offers to change it in the MB workbook too, so the BOM keeps counting it.", "코드를 바꾸면 노란 막대가 MB 워크북도 함께 바꿀지 묻습니다. 그래야 BOM이 계속 집계합니다."),
       b("Import Excel/CSV shows a preview first, and also reads Recipes and Backups sheets. Export to Excel writes all three.", "Import Excel/CSV는 먼저 미리보기를 보여 주고 Recipes·Backups 시트도 읽습니다. Export to Excel은 세 시트를 씁니다."),
       b("Recipe: components per amount; Batch size and “per batch” for bags and filters; Try it shows what the BOM will count.", "Recipe: 기준량당 성분, Bag·필터는 Batch size와 “per batch”. Try it이 BOM 계산 결과를 미리 보여 줍니다."),
+      b("Recipe › Made once for all its BOM lines: for a buffer made once and shared (a packing evaluation buffer for three columns): batches and per-batch parts are counted for the total. Not ticked: each line is prepared on its own.", "Recipe › Made once for all its BOM lines: 한 번 만들어 나눠 쓰는 버퍼(예: 컬럼 세 개에 나눠 쓰는 Packing Evaluation Buffer)는 체크하면 배치 수와 배치당 부자재를 합계로 셉니다. 체크하지 않으면 줄마다 따로 조제합니다."),
       b("Backups: alternates with a ratio. Delete also takes the material out of recipes and backup lists.", "Backups: 비율과 함께 대체 자재. Delete는 레시피·대체 목록에서도 함께 지웁니다."),
       b("Purchasing (ribbon › Find and filter, with Find and Status): supplier, part no. and pack size; the BOM totals then show whole packs to order.", "Purchasing(리본 › Find and filter, 찾기·Status와 함께): 공급사, 품번, 포장 단위. BOM 합계에 주문할 포장 수(올림)가 나옵니다."),
       b("Tick rows (the box after the row number) to edit them together or delete them; ↶ takes it back. Click a cell: the formula bar shows all of it, and a text cell can be edited there.", "행 번호 옆 칸을 체크하면 여러 자재를 한 번에 고치거나 지울 수 있습니다. ↶로 되돌립니다. 칸을 누르면 수식 입력줄에 전체 내용이 나오고, 글자 칸은 거기서도 고칩니다."),
@@ -239,6 +241,7 @@ export const RULES: { title: Bilingual; rows: [Bilingual, Bilingual][] }[] = [
       [b("Batches", "배치 수"), b("⌈line quantity ÷ batch size⌉ per line (rounded up)", "줄마다 ⌈줄 수량 ÷ 배치 크기⌉ (올림)")],
       [b("Per batch component", "배치당 성분"), b("batches × its quantity (e.g. 10 batches → 10 bags)", "배치 수 × 성분량 (예: 10배치 → Bag 10개)")],
       [b("Whole batches", "배치 전량 조제"), b("proportional components for batches × batch size", "비례 성분을 배치 수 × 배치 크기만큼")],
+      [b("Made once for all its lines", "한 번 조제해 나눠 씀"), b("batches of the total over its lines; each line shows its share", "모든 줄 합계로 배치 수를 셈, 줄마다 자기 몫 표시")],
       [b("Backup", "대체 자재"), b("primary quantity × ratio, never in the totals", "주 자재 수량 × 비율, 합계에 넣지 않음")],
     ],
   },
@@ -246,7 +249,7 @@ export const RULES: { title: Bilingual; rows: [Bilingual, Bilingual][] }[] = [
     title: b("SAP BOMs (semi-finished)", "SAP BOM (반제품)"),
     rows: [
       [b("Unit operation", "단위공정"), b("its counted lines + the semi-finished product before it (transfer in); base = one batch's output (MB flow of the transfer out)", "집계된 줄 + 앞 단위공정 반제품(들어오는 이송). 기준 수량 = 배치당 출력량(나가는 이송의 MB 흐름)")],
-      [b("Packing / unpacking", "패킹 / 언패킹"), b("the lines given to it; base 1 EA unless typed", "넘겨 준 줄만. 기준 수량은 입력하지 않으면 1 EA")],
+      [b("Packing / unpacking", "패킹 / 언패킹"), b("the lines given to it, or a part of a line (MB streams or an amount; the rest stays on the run); base 1 EA unless typed", "넘겨 준 줄 또는 줄의 일부(MB 스트림이나 양, 나머지는 실행에). 기준 수량은 입력하지 않으면 1 EA")],
       [b("Prepared material", "조제 자재"), b("its recipe for one batch (or the recipe amount); per-batch parts are fixed quantities (FMENG X)", "배치 1개(또는 레시피 기준량)에 대한 레시피. 배치당 성분은 고정 수량(FMENG X)")],
       [b("Quantities", "수량"), b("Receiving (set in SAP settings), per batch, before overage; the overage is component scrap (AUSCH); 3 decimals", "Receiving(SAP settings에서 변경), 배치당, 여유율 전. 여유율은 구성품 스크랩(AUSCH). 소수점 셋째 자리")],
       [b("Codes", "코드"), b("MatCode = SAP material number (7 digits by default); semi-finished codes are entered on the sheet", "MatCode = SAP 자재번호(기본 7자리). 반제품 코드는 시트에서 입력")],
